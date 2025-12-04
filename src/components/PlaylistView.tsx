@@ -54,7 +54,7 @@ interface PlaylistViewProps {
   creditsRemaining?: number;
   onPlaySong?: (songId: string) => void;
   onRemovePlaylistSong?: (songId: string) => void;
-  onPlaylistReorder?: (newQueue: QueuedSong[]) => void;
+  onPlaylistReorder?: (newQueue: Song[]) => void;
 }
 
 function SortableQueueItem({ song, hasJoinedSession, onRemove }: { song: QueuedSong; hasJoinedSession: boolean; onRemove?: (songId: string) => void }) {
