@@ -1,0 +1,1537 @@
+import { NowPlaying } from "./components/NowPlaying";
+import { BottomNav } from "./components/BottomNav";
+import { MainContent } from "./components/MainContent";
+import { Header } from "./components/Header";
+import { CreatePlaylist } from "./components/CreatePlaylist";
+import { PlaylistView } from "./components/PlaylistView";
+import { SearchSongs } from "./components/SearchSongs";
+import { SessionView } from "./components/SessionView";
+import { JoinSession } from "./components/JoinSession";
+import { PlaylistSettings } from "./components/PlaylistSettings";
+import { MyPlaylists } from "./components/MyPlaylists";
+import { Recommendations } from "./components/Recommendations";
+import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Undo2 } from "lucide-react";
+import {
+  fetchPlaylists,
+  createPlaylistInDb,
+  fetchSongsForPlaylist,
+  setSongsForPlaylist,
+  createSessionInDb,
+  addParticipantToSession,
+  fetchSessionByCode,
+  fetchSessionQueue,
+  fetchSessionParticipants,
+  addSongToSessionQueue,
+  clearSessionQueue,
+  removeSongFromSessionQueue,
+} from "./backend";
+
+
+interface AppNotification {
+  id: string;
+  message: string;
+  type: "info" | "success" | "vote";
+}
+
+interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  albumArt: string;
+}
+
+interface QueuedSong extends Song {
+  queuedBy: {
+    type: 'guest' | 'user';
+    name: string;
+  };
+}
+
+interface PlaylistSettings {
+  isGroupPlaylist: boolean;
+  unlimitedQueuing: boolean;
+  queuesPerHour: string;
+  autoplayMode: string;
+  hostOverride: boolean;
+  voteToSkip: boolean;
+  skipPercentage: string;
+}
+
+const defaultSettings: PlaylistSettings = {
+  isGroupPlaylist: false,
+  unlimitedQueuing: true,
+  queuesPerHour: "3",
+  autoplayMode: "playlist",
+  hostOverride: false,
+  voteToSkip: false,
+  skipPercentage: "50",
+};
+
+interface Playlist {
+  id: string;
+  name: string;
+  albumArt: string | null;
+  songs: Song[];
+  isSessionActive: boolean;
+  sessionCode: string | null;
+  sessionId?: string | null;
+  queue: QueuedSong[];
+  hasJoinedSession: boolean;
+  settings: PlaylistSettings;
+  participants?: Array<{
+    id: string;
+    name: string;
+    type: 'host' | 'user' | 'guest';
+  }>;
+  notifications?: Array<{
+    id: string;
+    message: string;
+    type: 'info' | 'success' | 'vote';
+  }>;
+  skipVotes?: Set<string>; // Track who voted to skip
+  creditsRemaining?: number;
+  hasVotedToSkip?: boolean; // Track if current user has voted
+}
+
+interface SessionNotification {
+  id: string;
+  sessionCode: string;
+  playlistName: string;
+  isJoined?: boolean;
+  isCreated?: boolean;
+}
+
+export default function App() {
+  const [currentView, setCurrentView] = useState<string>("home");
+  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  const [showPlaylistSettings, setShowPlaylistSettings] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
+  const [showStopConfirmation, setShowStopConfirmation] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [sessionNotification, setSessionNotification] = useState<SessionNotification | null>(null);
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [previousView, setPreviousView] = useState<string>("home");
+  const [progress, setProgress] = useState(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const SONG_DURATION = 10; // 10 seconds per song
+
+  useEffect(() => {
+    const loadPlaylists = async () => {
+      const dbPlaylists = await fetchPlaylists();
+
+      const mapped = dbPlaylists.map((p) => ({
+        id: p.id,
+        name: p.name,
+        albumArt: p.album_art,
+        songs: [],
+        isSessionActive: false,
+        sessionCode: null,
+        queue: [],
+        hasJoinedSession: false,
+        settings: { ...defaultSettings },
+      })) as Playlist[];
+
+      setPlaylists(mapped);
+    };
+
+    loadPlaylists();
+  }, []);
+
+  const activePlaylist = playlists.find(p => p.id === activePlaylistId);
+
+  const currentSong: Song | null =
+  (activePlaylist?.queue[currentSongIndex] as Song | undefined) ?? null;
+
+
+  // Simulate real-time group interactions
+  useEffect(() => {
+    if (activePlaylist?.isSessionActive && activePlaylist.settings.isGroupPlaylist) {
+      const timers: Array<ReturnType<typeof setTimeout>> = [];
+
+      // Define a comprehensive 5-minute event timeline
+      const events = [
+        // First minute - Initial activity
+        { time: 3000, action: () => {
+          const newParticipant = { id: 'guest3', name: 'Sarah', type: 'guest' as const };
+          updateParticipants(newParticipant);
+          addNotification(`Sarah joined the session`, 'info');
+        }},
+        { time: 8000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "As It Was",
+            artist: "Harry Styles",
+            album: "Harry's House",
+            albumArt: "https://picsum.photos/seed/asitwas/200",
+            queuedBy: { type: 'guest', name: 'Sarah' }
+          });
+          addNotification(`Sarah added "As It Was" to queue`, 'success');
+        }},
+        { time: 15000, action: () => {
+          const newParticipant = { id: 'guest4', name: 'Mike', type: 'guest' as const };
+          updateParticipants(newParticipant);
+          addNotification(`Mike joined the session`, 'info');
+        }},
+        { time: 22000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Guest 1 voted to skip (1/3 votes)`, 'vote');
+          }
+        }},
+        { time: 28000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Heat Waves",
+            artist: "Glass Animals",
+            album: "Dreamland",
+            albumArt: "https://picsum.photos/seed/heatwaves/200",
+            queuedBy: { type: 'user', name: 'John' }
+          });
+          addNotification(`John added "Heat Waves" to queue`, 'success');
+        }},
+        
+        // Second minute - More activity
+        { time: 35000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Sarah voted to skip (2/3 votes)`, 'vote');
+          }
+        }},
+        { time: 42000, action: () => {
+          const newParticipant = { id: 'guest5', name: 'Emma', type: 'guest' as const };
+          updateParticipants(newParticipant);
+          addNotification(`Emma joined the session`, 'info');
+        }},
+        { time: 50000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Shivers",
+            artist: "Ed Sheeran",
+            album: "=",
+            albumArt: "https://picsum.photos/seed/shivers/200",
+            queuedBy: { type: 'guest', name: 'Mike' }
+          });
+          addNotification(`Mike added "Shivers" to queue`, 'success');
+        }},
+        { time: 58000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Bad Habits",
+            artist: "Ed Sheeran",
+            album: "=",
+            albumArt: "https://picsum.photos/seed/badhabits/200",
+            queuedBy: { type: 'guest', name: 'Emma' }
+          });
+          addNotification(`Emma added "Bad Habits" to queue`, 'success');
+        }},
+        
+        // Third minute - Peak activity
+        { time: 68000, action: () => {
+          const newParticipant = { id: 'guest6', name: 'Alex', type: 'guest' as const };
+          updateParticipants(newParticipant);
+          addNotification(`Alex joined the session`, 'info');
+        }},
+        { time: 75000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Mike voted to skip (3/4 votes)`, 'vote');
+          }
+        }},
+        { time: 82000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Anti-Hero",
+            artist: "Taylor Swift",
+            album: "Midnights",
+            albumArt: "https://picsum.photos/seed/antihero/200",
+            queuedBy: { type: 'guest', name: 'Guest 1' }
+          });
+          addNotification(`Guest 1 added "Anti-Hero" to queue`, 'success');
+        }},
+        { time: 90000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Flowers",
+            artist: "Miley Cyrus",
+            album: "Endless Summer Vacation",
+            albumArt: "https://picsum.photos/seed/flowers/200",
+            queuedBy: { type: 'guest', name: 'Alex' }
+          });
+          addNotification(`Alex added "Flowers" to queue`, 'success');
+        }},
+        { time: 98000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Emma voted to skip (4/4 votes)`, 'vote');
+          }
+        }},
+        
+        // Fourth minute - Continued engagement
+        { time: 105000, action: () => {
+          const newParticipant = { id: 'guest7', name: 'Chris', type: 'guest' as const };
+          updateParticipants(newParticipant);
+          addNotification(`Chris joined the session`, 'info');
+        }},
+        { time: 112000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Calm Down",
+            artist: "Rema & Selena Gomez",
+            album: "Rave & Roses",
+            albumArt: "https://picsum.photos/seed/calmdown/200",
+            queuedBy: { type: 'user', name: 'John' }
+          });
+          addNotification(`John added "Calm Down" to queue`, 'success');
+        }},
+        { time: 120000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Vampire",
+            artist: "Olivia Rodrigo",
+            album: "GUTS",
+            albumArt: "https://picsum.photos/seed/vampire/200",
+            queuedBy: { type: 'guest', name: 'Sarah' }
+          });
+          addNotification(`Sarah added "Vampire" to queue`, 'success');
+        }},
+        { time: 128000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Alex voted to skip (1/4 votes)`, 'vote');
+          }
+        }},
+        { time: 135000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Cruel Summer",
+            artist: "Taylor Swift",
+            album: "Lover",
+            albumArt: "https://picsum.photos/seed/cruelsummer/200",
+            queuedBy: { type: 'guest', name: 'Chris' }
+          });
+          addNotification(`Chris added "Cruel Summer" to queue`, 'success');
+        }},
+        
+        // Fifth minute - Final wave
+        { time: 145000, action: () => {
+          const newParticipant = { id: 'guest8', name: 'Olivia', type: 'guest' as const };
+          updateParticipants(newParticipant);
+          addNotification(`Olivia joined the session`, 'info');
+        }},
+        { time: 152000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Chris voted to skip (2/5 votes)`, 'vote');
+          }
+        }},
+        { time: 160000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Someone You Loved",
+            artist: "Lewis Capaldi",
+            album: "Divinely Uninspired",
+            albumArt: "https://picsum.photos/seed/someoneyouloved/200",
+            queuedBy: { type: 'guest', name: 'Emma' }
+          });
+          addNotification(`Emma added "Someone You Loved"`, 'success');
+        }},
+        { time: 170000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Watermelon Sugar",
+            artist: "Harry Styles",
+            album: "Fine Line",
+            albumArt: "https://picsum.photos/seed/watermelonsugar/200",
+            queuedBy: { type: 'guest', name: 'Olivia' }
+          });
+          addNotification(`Olivia added "Watermelon Sugar"`, 'success');
+        }},
+        { time: 180000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Olivia voted to skip (3/5 votes)`, 'vote');
+          }
+        }},
+        { time: 190000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Good 4 U",
+            artist: "Olivia Rodrigo",
+            album: "SOUR",
+            albumArt: "https://picsum.photos/seed/good4u/200",
+            queuedBy: { type: 'guest', name: 'Mike' }
+          });
+          addNotification(`Mike added "Good 4 U" to queue`, 'success');
+        }},
+        { time: 200000, action: () => {
+          const newParticipant = { id: 'guest9', name: 'Zoe', type: 'guest' as const };
+          updateParticipants(newParticipant);
+          addNotification(`Zoe joined the session`, 'info');
+        }},
+        { time: 210000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Peaches",
+            artist: "Justin Bieber ft. Daniel Caesar",
+            album: "Justice",
+            albumArt: "https://picsum.photos/seed/peaches/200",
+            queuedBy: { type: 'guest', name: 'Zoe' }
+          });
+          addNotification(`Zoe added "Peaches" to queue`, 'success');
+        }},
+        { time: 220000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Sarah voted to skip (4/5 votes)`, 'vote');
+          }
+        }},
+        { time: 230000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Style",
+            artist: "Taylor Swift",
+            album: "1989",
+            albumArt: "https://picsum.photos/seed/style/200",
+            queuedBy: { type: 'guest', name: 'Alex' }
+          });
+          addNotification(`Alex added "Style" to queue`, 'success');
+        }},
+        { time: 240000, action: () => {
+          const newParticipant = { id: 'guest10', name: 'Liam', type: 'guest' as const };
+          updateParticipants(newParticipant);
+          addNotification(`Liam joined the session`, 'info');
+        }},
+        { time: 250000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Circles",
+            artist: "Post Malone",
+            album: "Hollywood's Bleeding",
+            albumArt: "https://picsum.photos/seed/circles/200",
+            queuedBy: { type: 'guest', name: 'Liam' }
+          });
+          addNotification(`Liam added "Circles" to queue`, 'success');
+        }},
+        { time: 260000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Liam voted to skip (5/6 votes)`, 'vote');
+          }
+        }},
+        { time: 270000, action: () => {
+          queueSong({
+            id: `q${Date.now()}`,
+            title: "Sunflower",
+            artist: "Post Malone & Swae Lee",
+            album: "Spider-Man: Into the Spider-Verse",
+            albumArt: "https://picsum.photos/seed/sunflower/200",
+            queuedBy: { type: 'user', name: 'John' }
+          });
+          addNotification(`John added "Sunflower" to queue`, 'success');
+        }},
+        { time: 285000, action: () => {
+          if (activePlaylist.settings.voteToSkip) {
+            addNotification(`Guest 1 voted to skip (6/6 votes - Skipping!)`, 'vote');
+          }
+        }},
+      ];
+
+      // Helper functions
+      const updateParticipants = (newParticipant: { id: string; name: string; type: 'guest' | 'user' | 'host' }) => {
+        setPlaylists(prevPlaylists => {
+          return prevPlaylists.map(p => {
+            if (p.id === activePlaylist.id) {
+              const currentParticipants = p.participants || [];
+              return {
+                ...p,
+                participants: [...currentParticipants, newParticipant]
+              };
+            }
+            return p;
+          });
+        });
+      };
+
+      const queueSong = (song: QueuedSong) => {
+        setPlaylists(prevPlaylists => {
+          return prevPlaylists.map(p => {
+            if (p.id === activePlaylist.id) {
+              const wasQueueEmpty = p.queue.length === 0;
+              const updatedPlaylist = {
+                ...p,
+                queue: [...p.queue, song]
+              };
+              
+              // If queue was empty, auto-start playing
+              if (wasQueueEmpty) {
+                setCurrentSongIndex(0);
+                setIsPlaying(true);
+                setProgress(0);
+              }
+              
+              return updatedPlaylist;
+            }
+            return p;
+          });
+        });
+      };
+
+      // Schedule all events
+      events.forEach(event => {
+        const timer = setTimeout(event.action, event.time);
+        timers.push(timer);
+      });
+
+      return () => {
+        timers.forEach(timer => clearTimeout(timer));
+      };
+    }
+  }, [activePlaylist?.isSessionActive, activePlaylist?.settings.isGroupPlaylist]);
+
+  // Auto-add autoplay song when queue is empty during session
+  useEffect(() => {
+    if (activePlaylist?.isSessionActive && activePlaylist.queue.length === 0) {
+      // Generate an autoplay song
+      const autoplaySongs = [
+        { id: `auto-${Date.now()}`, title: "Perfect", artist: "Ed Sheeran", album: "÷", albumArt: "https://picsum.photos/seed/perfect/200" },
+        { id: `auto-${Date.now() + 1}`, title: "Blinding Lights", artist: "The Weeknd", album: "After Hours", albumArt: "https://picsum.photos/seed/blindinglights/200" },
+        { id: `auto-${Date.now() + 2}`, title: "Levitating", artist: "Dua Lipa", album: "Future Nostalgia", albumArt: "https://picsum.photos/seed/levitating/200" },
+        { id: `auto-${Date.now() + 3}`, title: "Anti-Hero", artist: "Taylor Swift", album: "Midnights", albumArt: "https://picsum.photos/seed/antihero/200" },
+        { id: `auto-${Date.now() + 4}`, title: "As It Was", artist: "Harry Styles", album: "Harry's House", albumArt: "https://picsum.photos/seed/asitwas/200" },
+        { id: `auto-${Date.now() + 5}`, title: "Heat Waves", artist: "Glass Animals", album: "Dreamland", albumArt: "https://picsum.photos/seed/heatwaves/200" },
+        { id: `auto-${Date.now() + 6}`, title: "Flowers", artist: "Miley Cyrus", album: "Endless Summer Vacation", albumArt: "https://picsum.photos/seed/flowers/200" },
+        { id: `auto-${Date.now() + 7}`, title: "Vampire", artist: "Olivia Rodrigo", album: "GUTS", albumArt: "https://picsum.photos/seed/vampire/200" },
+        { id: `auto-${Date.now() + 8}`, title: "Calm Down", artist: "Rema & Selena Gomez", album: "Rave & Roses", albumArt: "https://picsum.photos/seed/calmdown/200" },
+        { id: `auto-${Date.now() + 9}`, title: "Cruel Summer", artist: "Taylor Swift", album: "Lover", albumArt: "https://picsum.photos/seed/cruelsummer/200" },
+        { id: `auto-${Date.now() + 10}`, title: "Watermelon Sugar", artist: "Harry Styles", album: "Fine Line", albumArt: "https://picsum.photos/seed/watermelonsugar/200" },
+        { id: `auto-${Date.now() + 11}`, title: "Good 4 U", artist: "Olivia Rodrigo", album: "SOUR", albumArt: "https://picsum.photos/seed/good4u/200" },
+        { id: `auto-${Date.now() + 12}`, title: "Peaches", artist: "Justin Bieber ft. Daniel Caesar", album: "Justice", albumArt: "https://picsum.photos/seed/peaches/200" },
+        { id: `auto-${Date.now() + 13}`, title: "Circles", artist: "Post Malone", album: "Hollywood's Bleeding", albumArt: "https://picsum.photos/seed/circles/200" },
+        { id: `auto-${Date.now() + 14}`, title: "Sunflower", artist: "Post Malone & Swae Lee", album: "Spider-Man", albumArt: "https://picsum.photos/seed/sunflower/200" },
+        { id: `auto-${Date.now() + 15}`, title: "Save Your Tears", artist: "The Weeknd", album: "After Hours", albumArt: "https://picsum.photos/seed/saveyourtears/200" },
+        { id: `auto-${Date.now() + 16}`, title: "Stay", artist: "The Kid LAROI & Justin Bieber", album: "F*ck Love 3", albumArt: "https://picsum.photos/seed/stay/200" },
+        { id: `auto-${Date.now() + 17}`, title: "Shivers", artist: "Ed Sheeran", album: "=", albumArt: "https://picsum.photos/seed/shivers/200" },
+        { id: `auto-${Date.now() + 18}`, title: "Bad Habits", artist: "Ed Sheeran", album: "=", albumArt: "https://picsum.photos/seed/badhabits/200" },
+        { id: `auto-${Date.now() + 19}`, title: "One Dance", artist: "Drake ft. WizKid", album: "Views", albumArt: "https://picsum.photos/seed/onedance/200" },
+        { id: `auto-${Date.now() + 20}`, title: "Starboy", artist: "The Weeknd ft. Daft Punk", album: "Starboy", albumArt: "https://picsum.photos/seed/starboy/200" },
+        { id: `auto-${Date.now() + 21}`, title: "Happier", artist: "Marshmello & Bastille", album: "Single", albumArt: "https://picsum.photos/seed/happier2/200" },
+        { id: `auto-${Date.now() + 22}`, title: "Senorita", artist: "Shawn Mendes & Camila Cabello", album: "Single", albumArt: "https://picsum.photos/seed/senorita/200" },
+        { id: `auto-${Date.now() + 23}`, title: "Dance Monkey", artist: "Tones and I", album: "The Kids Are Coming", albumArt: "https://picsum.photos/seed/dancemonkey/200" },
+        { id: `auto-${Date.now() + 24}`, title: "Positions", artist: "Ariana Grande", album: "Positions", albumArt: "https://picsum.photos/seed/positions/200" },
+        { id: `auto-${Date.now() + 25}`, title: "34+35", artist: "Ariana Grande", album: "Positions", albumArt: "https://picsum.photos/seed/3435/200" },
+        { id: `auto-${Date.now() + 26}`, title: "Montero", artist: "Lil Nas X", album: "Montero", albumArt: "https://picsum.photos/seed/montero/200" },
+        { id: `auto-${Date.now() + 27}`, title: "Sweater Weather", artist: "The Neighbourhood", album: "I Love You", albumArt: "https://picsum.photos/seed/sweaterweather/200" },
+        { id: `auto-${Date.now() + 28}`, title: "Midnight Rain", artist: "Taylor Swift", album: "Midnights", albumArt: "https://picsum.photos/seed/midnightrain/200" },
+        { id: `auto-${Date.now() + 29}`, title: "Starlight", artist: "Taylor Swift", album: "Red", albumArt: "https://picsum.photos/seed/starlight/200" },
+      ];
+      
+      const randomAutoplaySong = autoplaySongs[Math.floor(Math.random() * autoplaySongs.length)];
+      const autoplayQueuedSong: QueuedSong = {
+        ...randomAutoplaySong,
+        queuedBy: { type: 'user', name: 'Autoplay' }
+      };
+      
+      // Add autoplay song to queue
+      const updatedPlaylist = {
+        ...activePlaylist,
+        queue: [autoplayQueuedSong]
+      };
+      setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+      
+      // If nothing is currently playing, start playing the autoplay song
+      if (!isPlaying || !currentSong) {
+        setCurrentSongIndex(0);
+        setIsPlaying(true);
+        setProgress(0);
+      }
+    }
+  }, [activePlaylist?.isSessionActive, activePlaylist?.queue.length]);
+
+  // Keep session data in sync across participants
+  useEffect(() => {
+    if (!activePlaylist?.isSessionActive || !activePlaylist.sessionId) return;
+
+    let cancelled = false;
+
+    const syncSessionState = async () => {
+      const [queueRows, participantRows, dbSongs] = await Promise.all([
+        fetchSessionQueue(activePlaylist.sessionId!),
+        fetchSessionParticipants(activePlaylist.sessionId!),
+        fetchSongsForPlaylist(activePlaylist.id),
+      ]);
+
+      if (cancelled) return;
+
+      const mappedQueue: QueuedSong[] = queueRows.map((q) => ({
+        id: q.song_id,
+        title: q.title,
+        artist: q.artist,
+        album: q.album ?? "",
+        albumArt: q.album_art ?? "",
+        queuedBy: {
+          type: q.queued_by_type === "guest" ? "guest" : "user",
+          name: q.queued_by_name,
+        },
+      }));
+
+      const mappedParticipants =
+        participantRows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          type: p.role,
+        })) ?? [];
+
+      const mappedSongs: Song[] = dbSongs.map((s) => ({
+        id: s.song_id ?? s.title,
+        title: s.title,
+        artist: s.artist,
+        album: s.album ?? "",
+        albumArt: s.album_art ?? "",
+      }));
+
+      setPlaylists((prev) =>
+        prev.map((p) =>
+          p.id === activePlaylist.id
+            ? {
+                ...p,
+                queue: mappedQueue,
+                participants: mappedParticipants,
+                songs: mappedSongs,
+              }
+            : p
+        )
+      );
+    };
+
+    syncSessionState();
+    const interval = setInterval(syncSessionState, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activePlaylist?.id, activePlaylist?.isSessionActive, activePlaylist?.sessionId]);
+
+  // Handle song completion and queue advancement
+  useEffect(() => {
+    if (progress >= 100 && isPlaying && activePlaylist) {
+      // Song finished, advance to next song
+      if (activePlaylist.isSessionActive) {
+        // Remove the finished song from queue
+        const updatedQueue = activePlaylist.queue.slice(1);
+        const updatedPlaylist = {
+          ...activePlaylist,
+          queue: updatedQueue
+        };
+        setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+        
+        // Reset to first song (which will be the next song after removal)
+        setCurrentSongIndex(0);
+        setProgress(0);
+        
+        // The useEffect above will automatically add a new autoplay song if queue is now empty
+      } else {
+        // Playing from playlist (non-session mode)
+        if (currentSongIndex < activePlaylist.queue.length - 1) {
+          // More songs in current queue, move to next
+          setCurrentSongIndex(currentSongIndex + 1);
+          setProgress(0);
+        } else {
+          // Reached end of current queue, loop back to start of playlist
+          if (activePlaylist.songs.length > 0) {
+            // Queue all songs again for continuous loop
+            const queuedSongs: QueuedSong[] = activePlaylist.songs.map(song => ({
+              ...song,
+              queuedBy: { type: 'user' as const, name: 'You' }
+            }));
+            
+            const updatedPlaylist: Playlist = { 
+              ...activePlaylist, 
+              queue: queuedSongs
+            };
+            setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+            
+            // Start from beginning
+            setCurrentSongIndex(0);
+            setProgress(0);
+          } else {
+            // No songs in playlist, stop playing
+            setIsPlaying(false);
+            setCurrentSongIndex(0);
+            setProgress(0);
+          }
+        }
+      }
+    }
+  }, [progress, isPlaying, activePlaylist, currentSongIndex]);
+
+  // Handle playback progress
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    if (isPlaying && currentSong) {
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 100) {
+            // Song finished, move to next song
+            return 0;
+          }
+          // Progress increases by ~1% every 100ms for a 10-second song
+          return prev + 100 / (SONG_DURATION * 10);
+        });
+      }, 100);
+    }
+
+    return () => {
+      if (interval !== null) clearInterval(interval);
+    };
+  }, [isPlaying, currentSong]);
+
+
+  const addNotification = (message: string, type: 'info' | 'success' | 'vote') => {
+    const id = Date.now().toString();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 5000);
+  };
+
+  const handleUpdateSettings = (settings: PlaylistSettings) => {
+    if (activePlaylist) {
+      const updatedPlaylist = { ...activePlaylist, settings };
+      setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+    }
+    setShowPlaylistSettings(false);
+  };
+
+  const handlePlaylistClick = async (playlistId: string) => {
+    setActivePlaylistId(playlistId);
+    setCurrentView("playlist-view");
+
+    // 1) Fetch songs for this playlist from Supabase
+    const dbSongs = await fetchSongsForPlaylist(playlistId);
+
+    const mappedSongs: Song[] = dbSongs.map((s) => ({
+      id: s.song_id,                
+      title: s.title,
+      artist: s.artist,
+      album: s.album ?? "",
+      albumArt: s.album_art ?? "",
+    }));
+
+    // 2) Merge into the correct playlist in state
+    setPlaylists((prev) =>
+      prev.map((p) =>
+        p.id === playlistId ? { ...p, songs: mappedSongs } : p
+      )
+    );
+  };
+
+  useEffect(() => {
+    // Scroll to top whenever the view changes
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [currentView]);
+
+  const handleCreatePlaylist = async (
+    playlistName: string,
+    formData1: string,
+    formData2: string,
+    albumArt: string | null,
+    settings: PlaylistSettings
+  ) => {
+    // 1) Create in DB
+    const dbPlaylist = await createPlaylistInDb(playlistName, albumArt);
+    if (!dbPlaylist) {
+      // could add a toast here later
+      return;
+    }
+
+    // 2) Map DB row to your Playlist type
+    const newPlaylist: Playlist = {
+      id: dbPlaylist.id,
+      name: dbPlaylist.name,
+      albumArt: dbPlaylist.album_art,
+      songs: [],
+      isSessionActive: false,
+      sessionCode: null,
+      queue: [],
+      hasJoinedSession: false,
+      settings,
+    };
+
+    // 3) Update state
+    setPlaylists((prev) => [...prev, newPlaylist]);
+    setActivePlaylistId(newPlaylist.id);
+    setCurrentView("playlist-view");
+    setShowCreatePlaylist(false);
+
+    // Session “created” notification (same behavior as before)
+    const notificationId = Date.now().toString();
+    setSessionNotification({
+      id: notificationId,
+      sessionCode: "",
+      playlistName: newPlaylist.name,
+      isCreated: true,
+    });
+
+    setTimeout(() => {
+      setSessionNotification(null);
+    }, 3000);
+  };
+
+  const handleAddSongs = async (songs: Song[]) => {
+    if (activePlaylist && Array.isArray(songs)) {
+      // 1) Save to Supabase
+      await setSongsForPlaylist(activePlaylist.id, songs);
+
+      // 2) Update local state
+      const updatedPlaylist: Playlist = { ...activePlaylist, songs };
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === activePlaylist.id ? updatedPlaylist : p))
+      );
+    }
+    setCurrentView("playlist-view");
+  };
+
+
+  const handleAddToQueue = async (songs: Song[]) => {
+    if (!activePlaylist || !Array.isArray(songs) || songs.length === 0) {
+      setCurrentView("playlist-view");
+      return;
+    }
+
+    // Check credits (joined session)
+    if (activePlaylist.hasJoinedSession && (activePlaylist.creditsRemaining || 0) <= 0) {
+      addNotification("You have no queues remaining", "info");
+      setCurrentView("playlist-view");
+      return;
+    }
+
+    // Limit songs to remaining credits for joined sessions
+    let songsToAdd = songs;
+    if (activePlaylist.hasJoinedSession) {
+      const creditsAvailable = activePlaylist.creditsRemaining || 0;
+      songsToAdd = songs.slice(0, creditsAvailable);
+    }
+
+    // If we're in a real session, sync to Supabase
+    if (activePlaylist.isSessionActive && activePlaylist.sessionId) {
+      const queuedByType: "host" | "user" =
+        activePlaylist.hasJoinedSession ? "user" : "host";
+
+      for (const song of songsToAdd) {
+        await addSongToSessionQueue(
+          activePlaylist.sessionId,
+          {
+            id: song.id,
+            title: song.title,
+            artist: song.artist,
+            album: song.album,
+            albumArt: song.albumArt,
+          },
+          { name: "You", type: queuedByType }
+        );
+      }
+    }
+
+    // Local queue update
+    const queuedSongs: QueuedSong[] = songsToAdd.map((song) => ({
+      ...song,
+      queuedBy: { type: "user" as const, name: "You" },
+    }));
+
+    const wasQueueEmpty = activePlaylist.queue.length === 0;
+
+    const updatedPlaylist: Playlist = {
+      ...activePlaylist,
+      queue: [...activePlaylist.queue, ...queuedSongs],
+      creditsRemaining: activePlaylist.hasJoinedSession
+        ? Math.max(
+            0,
+            (activePlaylist.creditsRemaining || 0) - songsToAdd.length
+          )
+        : activePlaylist.creditsRemaining,
+    };
+
+    setPlaylists((prev) =>
+      prev.map((p) => (p.id === activePlaylist.id ? updatedPlaylist : p))
+    );
+
+    if (wasQueueEmpty && updatedPlaylist.queue.length > 0) {
+      setCurrentSongIndex(0);
+      setIsPlaying(true);
+      setProgress(0);
+    }
+
+    setCurrentView("playlist-view");
+  };
+
+
+  const handleQuickAddToQueue = async (song: Song) => {
+    if (!activePlaylist) return;
+
+    // Credits check
+    if (activePlaylist.hasJoinedSession && (activePlaylist.creditsRemaining || 0) <= 0) {
+      addNotification("You have no queues remaining", "info");
+      return;
+    }
+
+    // If we're in a real session, sync to Supabase
+    if (activePlaylist.isSessionActive && activePlaylist.sessionId) {
+      const queuedByType: "host" | "user" =
+        activePlaylist.hasJoinedSession ? "user" : "host";
+
+      await addSongToSessionQueue(
+        activePlaylist.sessionId,
+        {
+          id: song.id,
+          title: song.title,
+          artist: song.artist,
+          album: song.album,
+          albumArt: song.albumArt,
+        },
+        { name: "You", type: queuedByType }
+      );
+    }
+
+    // Local queue update
+    const queuedSong: QueuedSong = {
+      ...song,
+      queuedBy: { type: "user" as const, name: "You" },
+    };
+
+    const wasQueueEmpty = activePlaylist.queue.length === 0;
+
+    const updatedPlaylist: Playlist = {
+      ...activePlaylist,
+      queue: [...activePlaylist.queue, queuedSong],
+      creditsRemaining: activePlaylist.hasJoinedSession
+        ? Math.max(0, (activePlaylist.creditsRemaining || 0) - 1)
+        : activePlaylist.creditsRemaining,
+    };
+
+    setPlaylists((prev) =>
+      prev.map((p) => (p.id === activePlaylist.id ? updatedPlaylist : p))
+    );
+
+    addNotification(`You have added "${song.title}" by ${song.artist}`, "success");
+
+    if (wasQueueEmpty && updatedPlaylist.queue.length > 0) {
+      setCurrentSongIndex(0);
+      setIsPlaying(true);
+      setProgress(0);
+    }
+  };
+
+
+  const navigateToAddSongs = () => {
+    setPreviousView(currentView);
+    setCurrentView("add-songs");
+  };
+
+  const handleSkip = async () => {
+    if (!activePlaylist) return;
+
+    if (activePlaylist.isSessionActive && activePlaylist.queue.length > 0) {
+      const skippedSongId = activePlaylist.queue[0].id;
+
+      if (currentSongIndex < activePlaylist.queue.length - 1) {
+        setCurrentSongIndex(currentSongIndex + 1);
+        setProgress(0);
+      } else {
+        setIsPlaying(false);
+        setProgress(0);
+        setCurrentSongIndex(0);
+      }
+
+      const updatedQueue = activePlaylist.queue.slice(1);
+      const updatedPlaylist: Playlist = {
+        ...activePlaylist,
+        queue: updatedQueue,
+      };
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === activePlaylist.id ? updatedPlaylist : p))
+      );
+      setCurrentSongIndex(0);
+
+      // 🔗 Also remove from Supabase queue
+      if (activePlaylist.sessionId) {
+        await removeSongFromSessionQueue(activePlaylist.sessionId, skippedSongId);
+      }
+    }
+  };
+
+
+  const navigateToAddToQueue = () => {
+    setPreviousView(currentView);
+    setCurrentView("add-to-queue");
+  };
+
+  const navigateToSession = () => {
+    setCurrentView("session-setup");
+  };
+
+  const handleStartSession = async (sessionCode: string) => {
+    if (!activePlaylist) return;
+
+    // 1) Create session row in Supabase
+    const session = await createSessionInDb(activePlaylist.id, sessionCode);
+    if (!session) {
+      addNotification("Could not start session. Please try again.", "info");
+      return;
+    }
+
+    // 2) Add host as participant
+    await addParticipantToSession(session.id, "You", "host");
+
+    // 3) Update local playlist state
+    const updatedPlaylist: Playlist = {
+      ...activePlaylist,
+      isSessionActive: true,
+      sessionCode,
+      sessionId: session.id,
+      queue: [],
+      hasJoinedSession: false,
+      participants: [
+        { id: "you", name: "You", type: "host" },
+      ],
+    };
+
+    setPlaylists((prev) =>
+      prev.map((p) => (p.id === activePlaylist.id ? updatedPlaylist : p))
+    );
+
+    setActivePlaylistId(activePlaylist.id);
+    setIsPlaying(false);
+    setCurrentSongIndex(0);
+    setProgress(0);
+
+    // 4) Show session notification like before
+    const notificationId = Date.now().toString();
+    setSessionNotification({
+      id: notificationId,
+      sessionCode,
+      playlistName: activePlaylist.name,
+    });
+
+    setTimeout(() => {
+      setSessionNotification(null);
+    }, 3000);
+
+    setCurrentView("playlist-view");
+  };
+
+
+  const handleUndoSession = () => {
+    if (sessionNotification && activePlaylist) {
+      // Stop the session
+      const updatedPlaylist: Playlist = { 
+        ...activePlaylist, 
+        isSessionActive: false, 
+        sessionCode: null,
+        queue: []
+      };
+      setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+      
+      // Remove notification
+      setSessionNotification(null);
+      
+      // Stop playback
+      setIsPlaying(false);
+      setCurrentSongIndex(0);
+      setProgress(0);
+    }
+  };
+
+  const handleStopSession = () => {
+    setShowStopConfirmation(true);
+  };
+
+  const confirmStopSession = async () => {
+    if (activePlaylist) {
+      // If *host* is ending the session, also clear the DB queue
+      if (activePlaylist.isSessionActive && !activePlaylist.hasJoinedSession && activePlaylist.sessionId) {
+        await clearSessionQueue(activePlaylist.sessionId);
+      }
+
+      const updatedPlaylist: Playlist = {
+        ...activePlaylist,
+        isSessionActive: false,
+        sessionCode: null,
+        queue: [],
+      };
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === activePlaylist.id ? updatedPlaylist : p))
+      );
+
+      if (activePlaylist.hasJoinedSession) {
+        setCurrentView("home");
+        setActivePlaylistId(null);
+      }
+    }
+    setShowStopConfirmation(false);
+  };
+
+
+  const handleQueueReorder = (newQueue: QueuedSong[]) => {
+    if (activePlaylist) {
+      const updatedPlaylist: Playlist = { 
+        ...activePlaylist, 
+        queue: newQueue 
+      };
+      setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+    }
+  };
+
+  const handleRemoveSong = async (songId: string) => {
+    if (!activePlaylist) return;
+
+    // If we're in a real session, also delete from Supabase
+    if (activePlaylist.isSessionActive && activePlaylist.sessionId) {
+      try {
+        await removeSongFromSessionQueue(activePlaylist.sessionId, songId);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    setPlaylists((prevPlaylists) =>
+      prevPlaylists.map((p) => {
+        if (p.id !== activePlaylist.id) return p;
+
+        const removedSong = p.queue.find((song) => song.id === songId);
+        const updatedQueue = p.queue.filter((song) => song.id !== songId);
+
+        if (removedSong) {
+          const newNotification = {
+            id: Date.now().toString(),
+            message: `🗑️ You removed "${removedSong.title}" from queue`,
+            type: "info" as const,
+          };
+          setNotifications((prev) => [...prev, newNotification]);
+          setTimeout(() => {
+            setNotifications((prev) =>
+              prev.filter((n) => n.id !== newNotification.id)
+            );
+          }, 3000);
+        }
+
+        if (currentSongIndex === 0 && isPlaying) {
+          if (updatedQueue.length > 0) {
+            setCurrentSongIndex(0);
+            setProgress(0);
+          } else {
+            setIsPlaying(false);
+            setCurrentSongIndex(0);
+            setProgress(0);
+          }
+        }
+
+        return {
+          ...p,
+          queue: updatedQueue,
+        };
+      })
+    );
+  };
+
+
+  const handleJoinSession = async (code: string) => {
+    const trimmedCode = code.trim().toUpperCase();
+    if (!trimmedCode) return;
+
+    // 1) Find the session by code
+    const session = await fetchSessionByCode(trimmedCode);
+    if (!session) {
+      addNotification("Session not found or inactive", "info");
+      return;
+    }
+
+    // 2) Add "You" as a participant
+    await addParticipantToSession(session.id, "You", "user");
+
+    // 3) Fetch queue, participants, and playlist songs
+    const [queueRows, participantRows, dbSongs] = await Promise.all([
+      fetchSessionQueue(session.id),
+      fetchSessionParticipants(session.id),
+      fetchSongsForPlaylist(session.playlist_id),
+    ]);
+
+    // 4) Map DB → front-end types
+    const mappedQueue: QueuedSong[] = queueRows.map((q) => ({
+      id: q.song_id,
+      title: q.title,
+      artist: q.artist,
+      album: q.album ?? "",
+      albumArt: q.album_art ?? "",
+      queuedBy: {
+        type: q.queued_by_type === "host" ? "user" : "guest", // map into your narrow type
+        name: q.queued_by_name,
+      },
+    }));
+
+    const mappedSongs: Song[] = dbSongs.map((s) => ({
+      id: s.song_id ?? s.title, // or however you want; you already have this mapping in your code
+      title: s.title,
+      artist: s.artist,
+      album: s.album ?? "",
+      albumArt: s.album_art ?? "",
+    }));
+
+    const mappedParticipants =
+      participantRows.map((p) => ({
+        id: p.id,
+        name: p.name,
+        type: p.role,
+      })) ?? [];
+
+    const playlistRow = Array.isArray(session.playlists)
+      ? session.playlists[0]
+      : session.playlists;
+
+    const playlistName = playlistRow?.name ?? "Session Playlist";
+    const albumArt = playlistRow?.album_art ?? null;
+
+
+    // 5) Put this into your playlists state
+    setPlaylists((prev) => {
+      const existing = prev.find((p) => p.id === session.playlist_id);
+      const updated: Playlist = {
+        id: session.playlist_id,
+        name: existing?.name ?? playlistName,
+        albumArt: existing?.albumArt ?? albumArt,
+        songs: mappedSongs,
+        isSessionActive: true,
+        sessionCode: trimmedCode,
+        sessionId: session.id,
+        queue: mappedQueue,
+        hasJoinedSession: true,
+        settings: existing?.settings ?? defaultSettings,
+        participants: mappedParticipants,
+        skipVotes: new Set(),
+        creditsRemaining: 3,
+        hasVotedToSkip: false,
+      };
+
+      if (existing) {
+        return prev.map((p) => (p.id === session.playlist_id ? updated : p));
+      }
+      return [...prev, updated];
+    });
+
+    setActivePlaylistId(session.playlist_id);
+    setCurrentView("playlist-view");
+
+    // 6) Show "joined" notification like before
+    const notificationId = Date.now().toString();
+    setSessionNotification({
+      id: notificationId,
+      sessionCode: trimmedCode,
+      playlistName,
+      isJoined: true,
+    });
+
+    setTimeout(() => {
+      setSessionNotification(null);
+    }, 3000);
+  };
+
+
+  const handleVoteToSkip = () => {
+    if (!activePlaylist || !activePlaylist.hasJoinedSession) return;
+    
+    // Don't allow voting again if already voted
+    if (activePlaylist.hasVotedToSkip) return;
+    
+    const totalParticipants = activePlaylist.participants?.length || 1;
+    const currentVotes = (activePlaylist.skipVotes?.size || 0) + 1; // +1 for current user's vote
+    const requiredVotes = Math.ceil(totalParticipants * (parseInt(activePlaylist.settings.skipPercentage) / 100));
+    
+    // Mark that the user has voted
+    setPlaylists(playlists.map(p => 
+      p.id === activePlaylist.id 
+        ? { ...p, hasVotedToSkip: true }
+        : p
+    ));
+    
+    // Show notification
+    addNotification(`You voted to skip (${currentVotes}/${requiredVotes} needed)`, 'vote');
+  };
+
+  const handleSearchClick = () => {
+    setCurrentView("search");
+  };
+
+  const handleBack = () => {
+    setCurrentView(currentView === "add-songs" || currentView === "add-to-queue" ? previousView : "home");
+  };
+
+  const handlePlaySong = (songId: string) => {
+    if (!activePlaylist || activePlaylist.isSessionActive) return;
+    
+    // Find the index of the clicked song
+    const clickedIndex = activePlaylist.songs.findIndex(s => s.id === songId);
+    if (clickedIndex === -1) return;
+    
+    // Queue all songs starting from the clicked song
+    const songsToQueue = activePlaylist.songs.slice(clickedIndex);
+    const queuedSongs: QueuedSong[] = songsToQueue.map(song => ({
+      ...song,
+      queuedBy: { type: 'user' as const, name: 'You' }
+    }));
+    
+    // Update the playlist with the new queue
+    const updatedPlaylist: Playlist = { 
+      ...activePlaylist, 
+      queue: queuedSongs
+    };
+    setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+    
+    // Start playing from beginning of queue (which is the clicked song)
+    setCurrentSongIndex(0);
+    setIsPlaying(true);
+    setProgress(0);
+  };
+
+  const handleRemovePlaylistSong = (songId: string) => {
+    if (!activePlaylist) return;
+    
+    const updatedPlaylist: Playlist = {
+      ...activePlaylist,
+      songs: activePlaylist.songs.filter(song => song.id !== songId)
+    };
+    setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+  };
+
+  const handlePlaylistReorder = (newSongs: Song[]) => {
+    if (!activePlaylist) return;
+    
+    const updatedPlaylist: Playlist = {
+      ...activePlaylist,
+      songs: newSongs
+    };
+    setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+  };
+
+  const resolveNavTab = () => {
+    switch (currentView) {
+      case "search":
+        return "search";
+      case "join-group":
+        return "friends";
+      case "playlists":
+      case "playlist-view":
+      case "add-songs":
+      case "add-to-queue":
+      case "session-setup":
+        return "library";
+      default:
+        return "home";
+    }
+  };
+
+  const handleBottomNavNavigate = (tab: string) => {
+    switch (tab) {
+      case "home":
+        setCurrentView("home");
+        break;
+      case "search":
+        setCurrentView("search");
+        break;
+      case "friends":
+        setCurrentView("join-group");
+        break;
+      case "library":
+        setCurrentView("playlists");
+        break;
+      default:
+        setCurrentView("home");
+    }
+  };
+
+  const renderContent = () => {
+    if (currentView === "join-group") {
+      return <JoinSession onJoinSession={handleJoinSession} />;
+    } else if (currentView === "playlists") {
+      return <MyPlaylists playlists={playlists} onPlaylistClick={handlePlaylistClick} />;
+    } else if (currentView === "session-setup" && activePlaylist) {
+      return <SessionView 
+        playlistName={activePlaylist.name}
+        onStartSession={handleStartSession}
+      />;
+    } else if (currentView === "playlist-view" && activePlaylist) {
+      return <PlaylistView 
+        playlistName={activePlaylist.name} 
+        albumArt={activePlaylist.albumArt} 
+        songs={activePlaylist.songs}
+        onAddSongs={navigateToAddSongs}
+        onOpenRecommendations={() => setShowRecommendations(true)}
+        onAddToQueue={navigateToAddToQueue}
+        isSessionActive={activePlaylist.isSessionActive}
+        onStartSession={navigateToSession}
+        onStopSession={handleStopSession}
+        queue={activePlaylist.queue}
+        hasJoinedSession={activePlaylist.hasJoinedSession}
+        onOpenSettings={() => setShowPlaylistSettings(true)}
+        onQueueReorder={handleQueueReorder}
+        onRemoveSong={handleRemoveSong}
+        autoplayMode={activePlaylist.settings.autoplayMode}
+        sessionCode={activePlaylist.sessionCode}
+        participants={activePlaylist.participants}
+        notifications={activePlaylist.isSessionActive ? notifications : undefined}
+        creditsRemaining={activePlaylist.creditsRemaining}
+        onPlaySong={handlePlaySong}
+        onRemovePlaylistSong={handleRemovePlaylistSong}
+        onPlaylistReorder={handlePlaylistReorder}
+      />;
+    } else if (currentView === "add-songs" && activePlaylist) {
+      return <SearchSongs 
+        onAddSongs={handleAddSongs} 
+        selectedSongs={activePlaylist.songs}
+      />;
+    } else if (currentView === "add-to-queue" && activePlaylist) {
+      return <SearchSongs 
+        onAddSongs={handleAddToQueue} 
+        selectedSongs={activePlaylist.queue.map(q => q as Song)}
+        mode="quick-add"
+        onQuickAdd={handleQuickAddToQueue}
+      />;
+    } else {
+      return <MainContent 
+        onNavigate={setCurrentView} 
+        isSessionActive={activePlaylist?.isSessionActive}
+        playlistName={activePlaylist?.name}
+        onCreateClick={() => setShowCreatePlaylist(true)}
+        playlists={playlists}
+        onPlaylistClick={handlePlaylistClick}
+      />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-white flex flex-col">
+      {/* Header */}
+      <Header 
+        onSearchClick={handleSearchClick} 
+        currentView={currentView} 
+        onBack={handleBack}
+        onPlusClick={() => setShowCreatePlaylist(true)}
+        playlistTitle={activePlaylist?.name}
+        isSessionActive={activePlaylist?.isSessionActive && currentView === "playlist-view"}
+        onStopSession={handleStopSession}
+        onOpenSettings={currentView === "playlist-view" && activePlaylist && !activePlaylist?.isSessionActive ? () => setShowPlaylistSettings(true) : undefined}
+        hasJoinedSession={activePlaylist?.hasJoinedSession}
+      />
+      
+      {/* Main Content Area */}
+      <div key={currentView} className="flex-1 overflow-y-auto pb-40" ref={scrollContainerRef}>
+        {renderContent()}
+      </div>
+
+      {/* Now Playing Bar - Hide on join session view */}
+      {currentView !== "join-group" && (
+        <NowPlaying 
+          isPlaying={isPlaying}
+          onPlayPause={() => setIsPlaying(!isPlaying)}
+          onSkip={handleSkip}
+          currentSong={currentSong}
+          progress={progress}
+          showSkip={activePlaylist?.settings.hostOverride && !activePlaylist?.hasJoinedSession}
+          voteToSkip={activePlaylist?.hasJoinedSession && activePlaylist?.settings.voteToSkip}
+          onVoteSkip={handleVoteToSkip}
+        />
+      )}
+
+      {/* Bottom Navigation */}
+      <BottomNav 
+        activeTab={resolveNavTab()}
+        onNavigate={handleBottomNavNavigate}
+      />
+      
+      {/* Create Playlist Overlay */}
+      {showCreatePlaylist && (
+        <CreatePlaylist 
+          onCreatePlaylist={handleCreatePlaylist} 
+          onClose={() => setShowCreatePlaylist(false)} 
+        />
+      )}
+
+      {/* Playlist Settings Modal */}
+      {showPlaylistSettings && activePlaylist && (
+        <PlaylistSettings
+          settings={activePlaylist.settings}
+          onSave={handleUpdateSettings}
+          onClose={() => setShowPlaylistSettings(false)}
+        />
+      )}
+
+      {/* Recommendations Modal */}
+      {showRecommendations && (
+        <Recommendations 
+          onClose={() => setShowRecommendations(false)} 
+          onAddSong={(song) => handleAddSongs([song])}
+          onQueueSong={handleQuickAddToQueue}
+        />
+      )}
+
+      {/* Stop Session Confirmation Modal */}
+      {showStopConfirmation && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-gradient-to-br from-gray-900 to-black border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+          >
+            <h3 className="text-xl mb-2">{activePlaylist?.hasJoinedSession ? 'Leave Session?' : 'End Session?'}</h3>
+            <p className="text-white/60 mb-6">
+              {activePlaylist?.hasJoinedSession 
+                ? 'Are you sure you want to leave this session?' 
+                : 'Are you sure you want to end this session? This will clear the queue and disconnect all participants.'}
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowStopConfirmation(false)}
+                className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/15 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStopSession}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-500/30 text-white hover:brightness-110 rounded-xl transition-all"
+              >
+                {activePlaylist?.hasJoinedSession ? 'Leave Session' : 'End Session'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      
+      {/* Session Notification */}
+      <div className="fixed top-58 left-6 right-6 flex flex-col gap-2 pointer-events-none z-50">
+        <AnimatePresence>
+          {sessionNotification && (
+            <motion.div
+              key={sessionNotification.id}
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-gradient-to-r from-[#b1487a] to-[#c0504e] backdrop-blur-xl border border-[#b1487a]/70 rounded-xl px-5 py-3 shadow-2xl flex items-center justify-between gap-3 pointer-events-auto"
+            >
+              <p className="text-white flex-1 min-w-0">
+                {sessionNotification.isCreated ? '🎉 Hooray! You created a new playlist!' : '🎉 Hooray! You ' + (sessionNotification.isJoined ? 'joined' : 'started') + ' a session!'}
+              </p>
+              <button
+                onClick={handleUndoSession}
+                className="flex items-center gap-1 px-2 py-1 bg-white/20 hover:bg-white/30 rounded-lg transition-all flex-shrink-0"
+              >
+                <Undo2 className="w-3 h-3 text-white" />
+                <span className="text-white text-xs">Undo</span>
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
