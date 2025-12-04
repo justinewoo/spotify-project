@@ -733,8 +733,6 @@ export default function App() {
 
   const handleCreatePlaylist = async (
     playlistName: string,
-    formData1: string,
-    formData2: string,
     albumArt: string | null,
     settings: PlaylistSettings
   ) => {

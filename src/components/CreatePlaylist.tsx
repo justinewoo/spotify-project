@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { X, ChevronDown } from "lucide-react";
+import { X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface CreatePlaylistProps {
-  onCreatePlaylist: (playlistName: string, formData1: string, formData2: string, albumArt: string | null, settings: {
+  onCreatePlaylist: (playlistName: string, albumArt: string | null, settings: {
     isGroupPlaylist: boolean;
     unlimitedQueuing: boolean;
     queuesPerHour: string;
@@ -42,7 +42,7 @@ export function CreatePlaylist({ onCreatePlaylist, onClose }: CreatePlaylistProp
     console.log("Creating playlist:", playlistName);
     setIsVisible(false);
     setTimeout(() => {
-      onCreatePlaylist(playlistName, "", "", null, {
+      onCreatePlaylist(playlistName, null, {
         isGroupPlaylist: true, // Always true now
         unlimitedQueuing,
         queuesPerHour,
