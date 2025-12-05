@@ -24,6 +24,7 @@ export interface DbSession {
   code: string;
   playlist_id: string;
   is_active: boolean;
+  settings?: any;
 }
 
 export interface DbSessionParticipant {
@@ -156,7 +157,8 @@ export async function setSongsForPlaylist(
 
 export async function createSessionInDb(
   playlistId: string,
-  code: string
+  code: string,
+  settings?: any
 ): Promise<DbSession | null> {
   const { data, error } = await supabase
     .from("sessions")
@@ -164,8 +166,9 @@ export async function createSessionInDb(
       playlist_id: playlistId,
       code,
       is_active: true,
+      settings: settings ?? null,
     })
-    .select("id, code, playlist_id, is_active")
+    .select("id, code, playlist_id, is_active, settings")
     .single();
 
   if (error) {
@@ -180,16 +183,23 @@ export async function addParticipantToSession(
   sessionId: string,
   name: string,
   role: "host" | "user" | "guest"
-): Promise<void> {
-  const { error } = await supabase.from("session_participants").insert({
-    session_id: sessionId,
-    name,
-    role,
-  });
+): Promise<DbSessionParticipant | null> {
+  const { data, error } = await supabase
+    .from("session_participants")
+    .insert({
+      session_id: sessionId,
+      name,
+      role,
+    })
+    .select("id, session_id, name, role")
+    .single();
 
   if (error) {
     console.error("Error adding participant:", error.message);
+    return null;
   }
+
+  return data as DbSessionParticipant;
 }
 
 export interface DbSessionWithPlaylist extends DbSession {
@@ -199,6 +209,7 @@ export interface DbSessionWithPlaylist extends DbSession {
         album_art: string | null;
       }[]
     | null;
+  settings?: any;
 }
 
 
@@ -208,7 +219,7 @@ export async function fetchSessionByCode(
   const { data, error } = await supabase
     .from("sessions")
     .select(
-      "id, code, playlist_id, is_active, playlists(name, album_art)"
+      "id, code, playlist_id, is_active, settings, playlists(name, album_art)"
     )
     .eq("code", code)
     .eq("is_active", true)
@@ -240,6 +251,23 @@ export async function fetchSessionQueue(
   }
 
   return data ?? [];
+}
+
+export async function fetchSessionSettings(
+  sessionId: string
+): Promise<any | null> {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("settings")
+    .eq("id", sessionId)
+    .single();
+
+  if (error) {
+    console.error("Error fetching session settings:", error.message);
+    return null;
+  }
+
+  return data?.settings ?? null;
 }
 
 export async function fetchSessionParticipants(
@@ -327,6 +355,36 @@ export async function removeSongFromSessionQueue(
   if (error) {
     console.error("Error removing song from session queue", error);
     throw error;
+  }
+}
+
+export async function removeParticipantFromSession(
+  sessionId: string,
+  participantId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("session_participants")
+    .delete()
+    .eq("session_id", sessionId)
+    .eq("id", participantId);
+
+  if (error) {
+    console.error("Error removing participant from session", error.message);
+    throw error;
+  }
+}
+
+export async function updateSessionSettings(
+  sessionId: string,
+  settings: any
+): Promise<void> {
+  const { error } = await supabase
+    .from("sessions")
+    .update({ settings })
+    .eq("id", sessionId);
+
+  if (error) {
+    console.error("Error updating session settings:", error.message);
   }
 }
 

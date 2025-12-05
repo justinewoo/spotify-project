@@ -22,18 +22,15 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
   const [isGroupPlaylist, setIsGroupPlaylist] = useState(initialSettings.isGroupPlaylist);
   const [unlimitedQueuing, setUnlimitedQueuing] = useState(initialSettings.unlimitedQueuing);
   const [queuesPerHour, setQueuesPerHour] = useState(initialSettings.queuesPerHour);
-  const [autoplayExpanded, setAutoplayExpanded] = useState(false);
-  const [autoplayMode, setAutoplayMode] = useState(initialSettings.autoplayMode);
   const [hostOverride, setHostOverride] = useState(initialSettings.hostOverride);
-  const [voteToSkip, setVoteToSkip] = useState(initialSettings.voteToSkip);
-  const [skipPercentage, setSkipPercentage] = useState(initialSettings.skipPercentage);
+  const [voteToSkip] = useState(initialSettings.voteToSkip);
+  const [skipPercentage] = useState(initialSettings.skipPercentage);
 
   // Check if any settings have changed
   const hasChanges = 
     isGroupPlaylist !== initialSettings.isGroupPlaylist ||
     unlimitedQueuing !== initialSettings.unlimitedQueuing ||
     queuesPerHour !== initialSettings.queuesPerHour ||
-    autoplayMode !== initialSettings.autoplayMode ||
     hostOverride !== initialSettings.hostOverride ||
     voteToSkip !== initialSettings.voteToSkip ||
     skipPercentage !== initialSettings.skipPercentage;
@@ -43,7 +40,6 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
       isGroupPlaylist,
       unlimitedQueuing,
       queuesPerHour,
-      autoplayMode,
       hostOverride,
       voteToSkip,
       skipPercentage
@@ -75,7 +71,7 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
       >
         {/* Header with X button */}
         <div className="flex justify-between items-center px-6 py-4">
-          <h2 className="text-white text-2xl">Playlist Settings</h2>
+          <h2 className="text-white text-2xl">Session Settings</h2>
           <button
             onClick={onClose}
             className="transition-transform hover:scale-110"
@@ -94,14 +90,13 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
                 <span className="text-white text-lg">Group Playlist</span>
                 <button
                   onClick={() => setIsGroupPlaylist(!isGroupPlaylist)}
-                  className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full px-1 transition-colors ${
                     isGroupPlaylist ? 'bg-gradient-to-r from-pink-500 to-purple-500' : 'bg-zinc-700'
                   }`}
                 >
                   <span
-                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
-                      isGroupPlaylist ? 'translate-x-7' : 'translate-x-1'
-                    }`}
+                    className="absolute h-5 w-5 rounded-full bg-white shadow transition-all"
+                    style={{ left: isGroupPlaylist ? 'calc(100% - 24px)' : '4px' }}
                   />
                 </button>
               </div>
@@ -112,14 +107,13 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
                   <span className="text-white text-lg">Unlimited Guest Queuing</span>
                   <button
                     onClick={() => setUnlimitedQueuing(!unlimitedQueuing)}
-                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full px-1 transition-colors ${
                       unlimitedQueuing ? 'bg-gradient-to-r from-pink-500 to-purple-500' : 'bg-zinc-700'
                     }`}
                   >
                     <span
-                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
-                        unlimitedQueuing ? 'translate-x-7' : 'translate-x-1'
-                      }`}
+                      className="absolute h-5 w-5 rounded-full bg-white shadow transition-all"
+                      style={{ left: unlimitedQueuing ? 'calc(100% - 24px)' : '4px' }}
                     />
                   </button>
                 </div>
@@ -138,172 +132,25 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
                 </div>
               )}
 
-              {/* Autoplay Settings */}
-              <div className="relative border-b border-zinc-800">
-                <button
-                  onClick={() => setAutoplayExpanded(!autoplayExpanded)}
-                  className="w-full flex items-center justify-between px-4 py-4 text-white text-lg"
-                >
-                  <span>Autoplay settings</span>
-                  <ChevronDown
-                    size={20}
-                    className={`transition-transform ${autoplayExpanded ? 'rotate-180' : ''}`}
-                  />
-                </button>
-                
-                <AnimatePresence>
-                  {autoplayExpanded && (
-                    <>
-                      {/* Backdrop mask without blur */}
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="fixed inset-0 z-[60] bg-black/30"
-                        onClick={() => setAutoplayExpanded(false)}
-                      />
-                      
-                      {/* Glassmorphic dropdown menu */}
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute left-0 right-0 top-full mt-2 z-[65] bg-zinc-900/80 backdrop-blur-xl rounded-xl overflow-hidden border border-zinc-700/50 shadow-2xl"
-                      >
-                        <div className="py-2">
-                          <label className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-zinc-800/50 transition-colors">
-                            <div className="relative flex items-center justify-center">
-                              <input
-                                type="radio"
-                                name="autoplay"
-                                value="my-taste"
-                                checked={autoplayMode === "my-taste"}
-                                onChange={(e) => {
-                                  setAutoplayMode(e.target.value);
-                                  setAutoplayExpanded(false);
-                                }}
-                                className="appearance-none w-5 h-5 border-2 border-zinc-500 rounded-full cursor-pointer checked:border-0"
-                              />
-                              {autoplayMode === "my-taste" && (
-                                <div className="absolute w-5 h-5 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 pointer-events-none" />
-                              )}
-                            </div>
-                            <span className="text-white">Auto-Play based on my taste</span>
-                          </label>
-                          
-                          {isGroupPlaylist && (
-                            <label className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-zinc-800/50 transition-colors">
-                              <div className="relative flex items-center justify-center">
-                                <input
-                                  type="radio"
-                                  name="autoplay"
-                                  value="all-tastes"
-                                  checked={autoplayMode === "all-tastes"}
-                                  onChange={(e) => {
-                                    setAutoplayMode(e.target.value);
-                                    setAutoplayExpanded(false);
-                                  }}
-                                  className="appearance-none w-5 h-5 border-2 border-zinc-500 rounded-full cursor-pointer checked:border-0"
-                                />
-                                {autoplayMode === "all-tastes" && (
-                                  <div className="absolute w-5 h-5 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 pointer-events-none" />
-                                )}
-                              </div>
-                              <span className="text-white">Auto-Play based on all user's tastes</span>
-                            </label>
-                          )}
-                          
-                          <label className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-zinc-800/50 transition-colors">
-                            <div className="relative flex items-center justify-center">
-                              <input
-                                type="radio"
-                                name="autoplay"
-                                value="playlist"
-                                checked={autoplayMode === "playlist"}
-                                onChange={(e) => {
-                                  setAutoplayMode(e.target.value);
-                                  setAutoplayExpanded(false);
-                                }}
-                                className="appearance-none w-5 h-5 border-2 border-zinc-500 rounded-full cursor-pointer checked:border-0"
-                              />
-                              {autoplayMode === "playlist" && (
-                                <div className="absolute w-5 h-5 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 pointer-events-none" />
-                              )}
-                            </div>
-                            <span className="text-white">Auto-Play based on the playlist</span>
-                          </label>
-                        </div>
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
-
               {/* Host Override Toggle */}
               {isGroupPlaylist && (
                 <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-800">
                   <span className="text-white text-lg">Host Override</span>
                   <button
                     onClick={() => setHostOverride(!hostOverride)}
-                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full px-1 transition-colors ${
                       hostOverride ? 'bg-gradient-to-r from-pink-500 to-purple-500' : 'bg-zinc-700'
                     }`}
                   >
                     <span
-                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
-                        hostOverride ? 'translate-x-7' : 'translate-x-1'
-                      }`}
+                      className="absolute h-5 w-5 rounded-full bg-white shadow transition-all"
+                      style={{ left: hostOverride ? 'calc(100% - 24px)' : '4px' }}
                     />
                   </button>
                 </div>
               )}
 
-              {/* Vote to Skip Toggle */}
-              {isGroupPlaylist && (
-                <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-800">
-                  <span className="text-white text-lg">Vote to Skip</span>
-                  <button
-                    onClick={() => setVoteToSkip(!voteToSkip)}
-                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
-                      voteToSkip ? 'bg-gradient-to-r from-pink-500 to-purple-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
-                        voteToSkip ? 'translate-x-7' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-              )}
-
-              {/* Skip Percentage (only shown when Vote to Skip is ON) */}
-              {isGroupPlaylist && voteToSkip && (
-                <div className="flex items-center justify-between px-4 py-4">
-                  <span className="text-white text-lg">Skip percentage needed</span>
-                  <div className="flex items-center bg-zinc-800 rounded-lg px-3 py-2">
-                    <input
-                      type="text"
-                      value={skipPercentage}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/\D/g, '');
-                        // Prevent "00"
-                        if (value === '00') return;
-                        // Prevent 3-digit numbers starting with 0 (like "010", "020") but allow "100"
-                        if (value.length === 3 && value.startsWith('0')) return;
-                        if (value === '' || (parseInt(value) >= 0 && parseInt(value) <= 100)) {
-                          setSkipPercentage(value);
-                        }
-                      }}
-                      className="w-12 bg-transparent text-white text-center focus:outline-none"
-                      style={{ width: `${Math.max(skipPercentage.length, 1) * 0.6 + 0.5}rem` }}
-                    />
-                    <span className="text-white">%</span>
-                  </div>
-                </div>
-              )}
+              {/* Vote to Skip removed */}
             </div>
           </div>
 

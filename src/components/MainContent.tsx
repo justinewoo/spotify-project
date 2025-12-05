@@ -28,8 +28,6 @@ export function MainContent({ onNavigate, isSessionActive, playlistName, onCreat
     { id: 6, label: "Genres", color: "from-[#c0504e] to-[#b1487a]", view: "genres" },
     { id: 7, label: "Moods", color: "from-[#b1487a] to-[#852654]", view: "moods" },
     { id: 8, label: "Albums", color: "from-[#6343b8] to-[#9141a9]", view: "albums" },
-    { id: 9, label: "Friends", color: "from-[#9141a9] to-[#c0504e]", view: "friends" },
-    { id: 10, label: "Settings", color: "from-[#852654] to-[#6343b8]", view: "settings" },
   ];
 
   return (

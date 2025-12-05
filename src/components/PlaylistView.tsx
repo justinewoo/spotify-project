@@ -1,10 +1,18 @@
-import { Play, User, UserCircle, Plus, X, Settings, Users, Music, ThumbsUp } from "lucide-react";
+import { Play, User, UserCircle, Plus, X, Users, Music, ThumbsUp } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+
+type Song = {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  albumArt: string;
+};
 
 interface QueuedSong {
   id: string;
@@ -18,16 +26,20 @@ interface QueuedSong {
   };
 }
 
+interface PlaylistSettings {
+  isGroupPlaylist: boolean;
+  unlimitedQueuing: boolean;
+  queuesPerHour: string;
+  autoplayMode: string;
+  hostOverride: boolean;
+  voteToSkip: boolean;
+  skipPercentage: string;
+}
+
 interface PlaylistViewProps {
   playlistName: string;
   albumArt: string | null;
-  songs: Array<{
-    id: string;
-    title: string;
-    artist: string;
-    album: string;
-    albumArt: string;
-  }>;
+  songs: Song[];
   onAddSongs: () => void;
   onOpenRecommendations?: () => void;
   onAddToQueue: () => void;
@@ -36,7 +48,6 @@ interface PlaylistViewProps {
   onStopSession: () => void;
   queue: QueuedSong[];
   hasJoinedSession: boolean;
-  onOpenSettings: () => void;
   onQueueReorder: (newQueue: QueuedSong[]) => void;
   onRemoveSong?: (songId: string) => void;
   autoplayMode: string;
@@ -52,12 +63,13 @@ interface PlaylistViewProps {
     type: 'info' | 'success' | 'vote';
   }>;
   creditsRemaining?: number;
+  settings: PlaylistSettings;
   onPlaySong?: (songId: string) => void;
   onRemovePlaylistSong?: (songId: string) => void;
   onPlaylistReorder?: (newQueue: Song[]) => void;
 }
 
-function SortableQueueItem({ song, hasJoinedSession, onRemove }: { song: QueuedSong; hasJoinedSession: boolean; onRemove?: (songId: string) => void }) {
+function SortableQueueItem({ song, hasJoinedSession, canRemove, onRemove }: { song: QueuedSong; hasJoinedSession: boolean; canRemove: boolean; onRemove?: (songId: string) => void }) {
   const {
     attributes,
     listeners,
@@ -100,7 +112,7 @@ function SortableQueueItem({ song, hasJoinedSession, onRemove }: { song: QueuedS
           <p className="text-gray-400 text-sm truncate">{song.artist}</p>
         </div>
       </div>
-      {!hasJoinedSession && onRemove && (
+      {!hasJoinedSession && canRemove && onRemove && (
         <button 
           onClick={handleRemove}
           className="absolute top-3 right-3 p-2 hover:bg-red-500/20 rounded-lg transition-colors z-10"
@@ -110,14 +122,6 @@ function SortableQueueItem({ song, hasJoinedSession, onRemove }: { song: QueuedS
       )}
     </div>
   );
-}
-
-interface Song {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  albumArt: string;
 }
 
 function SortablePlaylistItem({ 
@@ -198,19 +202,18 @@ function SortablePlaylistItem({
   );
 }
 
-export function PlaylistView({ 
-  playlistName, 
-  albumArt, 
-  songs, 
-  onAddSongs, 
+export function PlaylistView({
+  playlistName,
+  albumArt,
+  songs,
+  onAddSongs,
   onOpenRecommendations,
   onAddToQueue,
-  isSessionActive, 
-  onStartSession, 
+  isSessionActive,
+  onStartSession,
   onStopSession,
   queue,
   hasJoinedSession,
-  onOpenSettings,
   onQueueReorder,
   onRemoveSong,
   autoplayMode,
@@ -218,6 +221,7 @@ export function PlaylistView({
   participants,
   notifications,
   creditsRemaining,
+  settings,
   onPlaySong,
   onRemovePlaylistSong,
   onPlaylistReorder
@@ -367,34 +371,19 @@ export function PlaylistView({
       )}
 
       <div className="px-6">
-      {/* Menu Section - 3 Button Layout - Near header */}
+      {/* Menu Section - Compact CTA near header */}
       {!isSessionActive && (
-        <div className="max-w-2xl mx-auto mb-6 space-y-4">
-          {/* Top Row: Start Session and Invite Friends */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Start a Session */}
-            <button
-              onClick={onStartSession}
-              className="flex flex-col items-center justify-center gap-3 py-6 bg-gradient-to-r from-[#9141a9] to-[#b1487a] rounded-2xl hover:brightness-110 transition-all"
-            >
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-              </svg>
-              <span className="text-white text-sm">Start a Session</span>
-            </button>
-            
-            {/* Invite Friends */}
-            <button
-              className="flex flex-col items-center justify-center gap-3 py-6 bg-gradient-to-r from-[#6343b8] to-[#9141a9] rounded-2xl hover:brightness-110 transition-all"
-            >
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <span className="text-white text-sm">Invite Friends</span>
-            </button>
-          </div>
+        <div className="max-w-2xl mx-auto mb-6 space-y-3">
+          <button
+            onClick={onStartSession}
+            className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-[#9141a9] to-[#b1487a] rounded-2xl hover:brightness-110 transition-all"
+          >
+            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+            </svg>
+            <span className="text-white text-sm">Start a Session</span>
+          </button>
           
-          {/* Add Songs */}
           <button
             onClick={onAddSongs}
             className="w-full px-4 py-2 flex items-center justify-center gap-2 bg-gradient-to-r from-[#6343b8] to-[#9141a9] rounded-full hover:brightness-110 transition-all"
@@ -412,7 +401,7 @@ export function PlaylistView({
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4 gap-4">
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <h2 className="text-white text-xl shrink-0">{localQueue.length > 0 ? 'Up Next' : 'Autoplaying'}</h2>
+              <h2 className="text-white text-xl shrink-0">{localQueue.length > 0 ? 'Up Next' : 'Queue'}</h2>
               {notifications && notifications.length > 0 && (
                 <AnimatePresence mode="popLayout">
                   {notifications.map((notification) => {
@@ -469,16 +458,6 @@ export function PlaylistView({
                 </AnimatePresence>
               )}
             </div>
-            <div className="flex gap-2 items-center shrink-0">
-              {!hasJoinedSession && (
-                <button 
-                  onClick={onOpenSettings}
-                  className="p-2 text-white hover:scale-110 transition-all"
-                >
-                  <Settings size={20} />
-                </button>
-              )}
-            </div>
           </div>
           {localQueue.length > 0 ? (
             <DndContext
@@ -501,21 +480,28 @@ export function PlaylistView({
                       <span className="text-white">Add Songs</span>
                     </button>
                   )}
-                  {hasJoinedSession && creditsRemaining !== undefined && (
+                  {hasJoinedSession && settings.isGroupPlaylist && (
                     <button 
                       onClick={onAddToQueue}
-                      disabled={creditsRemaining === 0}
+                      disabled={creditsRemaining !== undefined && creditsRemaining === 0}
                       className={`w-full p-4 ${
-                        creditsRemaining === 0
+                        creditsRemaining !== undefined && creditsRemaining === 0
                           ? 'bg-gradient-to-r from-gray-600/20 to-gray-700/20 border border-gray-600/30 cursor-not-allowed opacity-50'
                           : 'bg-gradient-to-r from-[#6343b8]/20 to-[#9141a9]/20 border border-[#6343b8]/30 hover:brightness-[1.67] brightness-150'
                       } rounded-lg flex items-center justify-center gap-2 transition-all`}
                     >
                       <Plus size={18} className="text-white" />
                       <span className="text-white">
-                        {creditsRemaining === 0 ? 'No Queues Remaining' : `Queues Remaining: ${creditsRemaining}`}
+                        {creditsRemaining === undefined
+                          ? 'Queue a song'
+                          : creditsRemaining === 0
+                            ? 'No Queues Remaining'
+                            : `Queues Remaining: ${creditsRemaining}`}
                       </span>
                     </button>
+                  )}
+                  {hasJoinedSession && !settings.isGroupPlaylist && (
+                    <p className="text-sm text-gray-400 text-center">Guest queuing is off for this session.</p>
                   )}
                   <AnimatePresence mode="popLayout">
                     {localQueue.map((song) => (
@@ -527,7 +513,12 @@ export function PlaylistView({
                         transition={{ type: "spring", damping: 20, stiffness: 300 }}
                         layout
                       >
-                        <SortableQueueItem song={song} hasJoinedSession={hasJoinedSession} onRemove={handleRemoveSong} />
+                        <SortableQueueItem 
+                          song={song} 
+                          hasJoinedSession={hasJoinedSession} 
+                          canRemove={settings.hostOverride} 
+                          onRemove={handleRemoveSong} 
+                        />
                       </motion.div>
                     ))}
                   </AnimatePresence>
@@ -545,6 +536,26 @@ export function PlaylistView({
                   >
                     Add Songs
                   </button>
+                )}
+                {hasJoinedSession && settings.isGroupPlaylist && (
+                  <button 
+                    onClick={onAddToQueue}
+                    disabled={creditsRemaining !== undefined && creditsRemaining === 0}
+                    className={`px-8 py-4 ${
+                      creditsRemaining !== undefined && creditsRemaining === 0
+                        ? 'bg-gradient-to-r from-gray-600/20 to-gray-700/20 border border-gray-600/30 cursor-not-allowed opacity-50'
+                        : 'bg-gradient-to-r from-[#6343b8] to-[#9141a9] hover:brightness-110'
+                    } text-white rounded-lg transition-all text-lg`}
+                  >
+                    {creditsRemaining === undefined
+                      ? 'Add to Queue'
+                      : creditsRemaining === 0
+                        ? 'No Queues Remaining'
+                        : `Queues Remaining: ${creditsRemaining}`}
+                  </button>
+                )}
+                {hasJoinedSession && !settings.isGroupPlaylist && (
+                  <p className="text-sm text-gray-400">Guest queuing is off for this session.</p>
                 )}
               </div>
             </div>

@@ -1,9 +1,10 @@
 interface SessionViewProps {
   playlistName: string;
   onStartSession: (sessionCode: string) => void;
+  onOpenSettings?: () => void;
 }
 
-export function SessionView({ playlistName, onStartSession }: SessionViewProps) {
+export function SessionView({ playlistName, onStartSession, onOpenSettings }: SessionViewProps) {
   // Generate a random 5-letter code
   const sessionCode = Math.random().toString(36).substring(2, 7).toUpperCase();
   
@@ -49,6 +50,16 @@ export function SessionView({ playlistName, onStartSession }: SessionViewProps) 
       >
         Invite
       </button>
+
+      {/* Session Settings */}
+      {onOpenSettings && (
+        <button 
+          onClick={onOpenSettings}
+          className="w-64 px-6 py-3 mb-3 bg-gradient-to-r from-[#374151] to-[#4b5563] text-white rounded-lg hover:brightness-110 transition-all"
+        >
+          Session Settings
+        </button>
+      )}
 
       {/* Start Button */}
       <button 

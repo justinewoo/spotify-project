@@ -23,9 +23,12 @@ import {
   fetchSessionByCode,
   fetchSessionQueue,
   fetchSessionParticipants,
+  fetchSessionSettings,
   addSongToSessionQueue,
   clearSessionQueue,
   removeSongFromSessionQueue,
+  removeParticipantFromSession,
+  updateSessionSettings,
 } from "./backend";
 
 
@@ -61,7 +64,7 @@ interface PlaylistSettings {
 }
 
 const defaultSettings: PlaylistSettings = {
-  isGroupPlaylist: false,
+  isGroupPlaylist: true,
   unlimitedQueuing: true,
   queuesPerHour: "3",
   autoplayMode: "playlist",
@@ -80,6 +83,7 @@ interface Playlist {
   sessionId?: string | null;
   queue: QueuedSong[];
   hasJoinedSession: boolean;
+  participantId?: string | null;
   settings: PlaylistSettings;
   participants?: Array<{
     id: string;
@@ -149,400 +153,6 @@ export default function App() {
   (activePlaylist?.queue[currentSongIndex] as Song | undefined) ?? null;
 
 
-  // Simulate real-time group interactions
-  useEffect(() => {
-    if (activePlaylist?.isSessionActive && activePlaylist.settings.isGroupPlaylist) {
-      const timers: Array<ReturnType<typeof setTimeout>> = [];
-
-      // Define a comprehensive 5-minute event timeline
-      const events = [
-        // First minute - Initial activity
-        { time: 3000, action: () => {
-          const newParticipant = { id: 'guest3', name: 'Sarah', type: 'guest' as const };
-          updateParticipants(newParticipant);
-          addNotification(`Sarah joined the session`, 'info');
-        }},
-        { time: 8000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "As It Was",
-            artist: "Harry Styles",
-            album: "Harry's House",
-            albumArt: "https://picsum.photos/seed/asitwas/200",
-            queuedBy: { type: 'guest', name: 'Sarah' }
-          });
-          addNotification(`Sarah added "As It Was" to queue`, 'success');
-        }},
-        { time: 15000, action: () => {
-          const newParticipant = { id: 'guest4', name: 'Mike', type: 'guest' as const };
-          updateParticipants(newParticipant);
-          addNotification(`Mike joined the session`, 'info');
-        }},
-        { time: 22000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Guest 1 voted to skip (1/3 votes)`, 'vote');
-          }
-        }},
-        { time: 28000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Heat Waves",
-            artist: "Glass Animals",
-            album: "Dreamland",
-            albumArt: "https://picsum.photos/seed/heatwaves/200",
-            queuedBy: { type: 'user', name: 'John' }
-          });
-          addNotification(`John added "Heat Waves" to queue`, 'success');
-        }},
-        
-        // Second minute - More activity
-        { time: 35000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Sarah voted to skip (2/3 votes)`, 'vote');
-          }
-        }},
-        { time: 42000, action: () => {
-          const newParticipant = { id: 'guest5', name: 'Emma', type: 'guest' as const };
-          updateParticipants(newParticipant);
-          addNotification(`Emma joined the session`, 'info');
-        }},
-        { time: 50000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Shivers",
-            artist: "Ed Sheeran",
-            album: "=",
-            albumArt: "https://picsum.photos/seed/shivers/200",
-            queuedBy: { type: 'guest', name: 'Mike' }
-          });
-          addNotification(`Mike added "Shivers" to queue`, 'success');
-        }},
-        { time: 58000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Bad Habits",
-            artist: "Ed Sheeran",
-            album: "=",
-            albumArt: "https://picsum.photos/seed/badhabits/200",
-            queuedBy: { type: 'guest', name: 'Emma' }
-          });
-          addNotification(`Emma added "Bad Habits" to queue`, 'success');
-        }},
-        
-        // Third minute - Peak activity
-        { time: 68000, action: () => {
-          const newParticipant = { id: 'guest6', name: 'Alex', type: 'guest' as const };
-          updateParticipants(newParticipant);
-          addNotification(`Alex joined the session`, 'info');
-        }},
-        { time: 75000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Mike voted to skip (3/4 votes)`, 'vote');
-          }
-        }},
-        { time: 82000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Anti-Hero",
-            artist: "Taylor Swift",
-            album: "Midnights",
-            albumArt: "https://picsum.photos/seed/antihero/200",
-            queuedBy: { type: 'guest', name: 'Guest 1' }
-          });
-          addNotification(`Guest 1 added "Anti-Hero" to queue`, 'success');
-        }},
-        { time: 90000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Flowers",
-            artist: "Miley Cyrus",
-            album: "Endless Summer Vacation",
-            albumArt: "https://picsum.photos/seed/flowers/200",
-            queuedBy: { type: 'guest', name: 'Alex' }
-          });
-          addNotification(`Alex added "Flowers" to queue`, 'success');
-        }},
-        { time: 98000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Emma voted to skip (4/4 votes)`, 'vote');
-          }
-        }},
-        
-        // Fourth minute - Continued engagement
-        { time: 105000, action: () => {
-          const newParticipant = { id: 'guest7', name: 'Chris', type: 'guest' as const };
-          updateParticipants(newParticipant);
-          addNotification(`Chris joined the session`, 'info');
-        }},
-        { time: 112000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Calm Down",
-            artist: "Rema & Selena Gomez",
-            album: "Rave & Roses",
-            albumArt: "https://picsum.photos/seed/calmdown/200",
-            queuedBy: { type: 'user', name: 'John' }
-          });
-          addNotification(`John added "Calm Down" to queue`, 'success');
-        }},
-        { time: 120000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Vampire",
-            artist: "Olivia Rodrigo",
-            album: "GUTS",
-            albumArt: "https://picsum.photos/seed/vampire/200",
-            queuedBy: { type: 'guest', name: 'Sarah' }
-          });
-          addNotification(`Sarah added "Vampire" to queue`, 'success');
-        }},
-        { time: 128000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Alex voted to skip (1/4 votes)`, 'vote');
-          }
-        }},
-        { time: 135000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Cruel Summer",
-            artist: "Taylor Swift",
-            album: "Lover",
-            albumArt: "https://picsum.photos/seed/cruelsummer/200",
-            queuedBy: { type: 'guest', name: 'Chris' }
-          });
-          addNotification(`Chris added "Cruel Summer" to queue`, 'success');
-        }},
-        
-        // Fifth minute - Final wave
-        { time: 145000, action: () => {
-          const newParticipant = { id: 'guest8', name: 'Olivia', type: 'guest' as const };
-          updateParticipants(newParticipant);
-          addNotification(`Olivia joined the session`, 'info');
-        }},
-        { time: 152000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Chris voted to skip (2/5 votes)`, 'vote');
-          }
-        }},
-        { time: 160000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Someone You Loved",
-            artist: "Lewis Capaldi",
-            album: "Divinely Uninspired",
-            albumArt: "https://picsum.photos/seed/someoneyouloved/200",
-            queuedBy: { type: 'guest', name: 'Emma' }
-          });
-          addNotification(`Emma added "Someone You Loved"`, 'success');
-        }},
-        { time: 170000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Watermelon Sugar",
-            artist: "Harry Styles",
-            album: "Fine Line",
-            albumArt: "https://picsum.photos/seed/watermelonsugar/200",
-            queuedBy: { type: 'guest', name: 'Olivia' }
-          });
-          addNotification(`Olivia added "Watermelon Sugar"`, 'success');
-        }},
-        { time: 180000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Olivia voted to skip (3/5 votes)`, 'vote');
-          }
-        }},
-        { time: 190000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Good 4 U",
-            artist: "Olivia Rodrigo",
-            album: "SOUR",
-            albumArt: "https://picsum.photos/seed/good4u/200",
-            queuedBy: { type: 'guest', name: 'Mike' }
-          });
-          addNotification(`Mike added "Good 4 U" to queue`, 'success');
-        }},
-        { time: 200000, action: () => {
-          const newParticipant = { id: 'guest9', name: 'Zoe', type: 'guest' as const };
-          updateParticipants(newParticipant);
-          addNotification(`Zoe joined the session`, 'info');
-        }},
-        { time: 210000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Peaches",
-            artist: "Justin Bieber ft. Daniel Caesar",
-            album: "Justice",
-            albumArt: "https://picsum.photos/seed/peaches/200",
-            queuedBy: { type: 'guest', name: 'Zoe' }
-          });
-          addNotification(`Zoe added "Peaches" to queue`, 'success');
-        }},
-        { time: 220000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Sarah voted to skip (4/5 votes)`, 'vote');
-          }
-        }},
-        { time: 230000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Style",
-            artist: "Taylor Swift",
-            album: "1989",
-            albumArt: "https://picsum.photos/seed/style/200",
-            queuedBy: { type: 'guest', name: 'Alex' }
-          });
-          addNotification(`Alex added "Style" to queue`, 'success');
-        }},
-        { time: 240000, action: () => {
-          const newParticipant = { id: 'guest10', name: 'Liam', type: 'guest' as const };
-          updateParticipants(newParticipant);
-          addNotification(`Liam joined the session`, 'info');
-        }},
-        { time: 250000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Circles",
-            artist: "Post Malone",
-            album: "Hollywood's Bleeding",
-            albumArt: "https://picsum.photos/seed/circles/200",
-            queuedBy: { type: 'guest', name: 'Liam' }
-          });
-          addNotification(`Liam added "Circles" to queue`, 'success');
-        }},
-        { time: 260000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Liam voted to skip (5/6 votes)`, 'vote');
-          }
-        }},
-        { time: 270000, action: () => {
-          queueSong({
-            id: `q${Date.now()}`,
-            title: "Sunflower",
-            artist: "Post Malone & Swae Lee",
-            album: "Spider-Man: Into the Spider-Verse",
-            albumArt: "https://picsum.photos/seed/sunflower/200",
-            queuedBy: { type: 'user', name: 'John' }
-          });
-          addNotification(`John added "Sunflower" to queue`, 'success');
-        }},
-        { time: 285000, action: () => {
-          if (activePlaylist.settings.voteToSkip) {
-            addNotification(`Guest 1 voted to skip (6/6 votes - Skipping!)`, 'vote');
-          }
-        }},
-      ];
-
-      // Helper functions
-      const updateParticipants = (newParticipant: { id: string; name: string; type: 'guest' | 'user' | 'host' }) => {
-        setPlaylists(prevPlaylists => {
-          return prevPlaylists.map(p => {
-            if (p.id === activePlaylist.id) {
-              const currentParticipants = p.participants || [];
-              return {
-                ...p,
-                participants: [...currentParticipants, newParticipant]
-              };
-            }
-            return p;
-          });
-        });
-      };
-
-      const queueSong = (song: QueuedSong) => {
-        setPlaylists(prevPlaylists => {
-          return prevPlaylists.map(p => {
-            if (p.id === activePlaylist.id) {
-              const wasQueueEmpty = p.queue.length === 0;
-              const updatedPlaylist = {
-                ...p,
-                queue: [...p.queue, song]
-              };
-              
-              // If queue was empty, auto-start playing
-              if (wasQueueEmpty) {
-                setCurrentSongIndex(0);
-                setIsPlaying(true);
-                setProgress(0);
-              }
-              
-              return updatedPlaylist;
-            }
-            return p;
-          });
-        });
-      };
-
-      // Schedule all events
-      events.forEach(event => {
-        const timer = setTimeout(event.action, event.time);
-        timers.push(timer);
-      });
-
-      return () => {
-        timers.forEach(timer => clearTimeout(timer));
-      };
-    }
-  }, [activePlaylist?.isSessionActive, activePlaylist?.settings.isGroupPlaylist]);
-
-  // Auto-add autoplay song when queue is empty during session
-  useEffect(() => {
-    if (activePlaylist?.isSessionActive && activePlaylist.queue.length === 0) {
-      // Generate an autoplay song
-      const autoplaySongs = [
-        { id: `auto-${Date.now()}`, title: "Perfect", artist: "Ed Sheeran", album: "÷", albumArt: "https://picsum.photos/seed/perfect/200" },
-        { id: `auto-${Date.now() + 1}`, title: "Blinding Lights", artist: "The Weeknd", album: "After Hours", albumArt: "https://picsum.photos/seed/blindinglights/200" },
-        { id: `auto-${Date.now() + 2}`, title: "Levitating", artist: "Dua Lipa", album: "Future Nostalgia", albumArt: "https://picsum.photos/seed/levitating/200" },
-        { id: `auto-${Date.now() + 3}`, title: "Anti-Hero", artist: "Taylor Swift", album: "Midnights", albumArt: "https://picsum.photos/seed/antihero/200" },
-        { id: `auto-${Date.now() + 4}`, title: "As It Was", artist: "Harry Styles", album: "Harry's House", albumArt: "https://picsum.photos/seed/asitwas/200" },
-        { id: `auto-${Date.now() + 5}`, title: "Heat Waves", artist: "Glass Animals", album: "Dreamland", albumArt: "https://picsum.photos/seed/heatwaves/200" },
-        { id: `auto-${Date.now() + 6}`, title: "Flowers", artist: "Miley Cyrus", album: "Endless Summer Vacation", albumArt: "https://picsum.photos/seed/flowers/200" },
-        { id: `auto-${Date.now() + 7}`, title: "Vampire", artist: "Olivia Rodrigo", album: "GUTS", albumArt: "https://picsum.photos/seed/vampire/200" },
-        { id: `auto-${Date.now() + 8}`, title: "Calm Down", artist: "Rema & Selena Gomez", album: "Rave & Roses", albumArt: "https://picsum.photos/seed/calmdown/200" },
-        { id: `auto-${Date.now() + 9}`, title: "Cruel Summer", artist: "Taylor Swift", album: "Lover", albumArt: "https://picsum.photos/seed/cruelsummer/200" },
-        { id: `auto-${Date.now() + 10}`, title: "Watermelon Sugar", artist: "Harry Styles", album: "Fine Line", albumArt: "https://picsum.photos/seed/watermelonsugar/200" },
-        { id: `auto-${Date.now() + 11}`, title: "Good 4 U", artist: "Olivia Rodrigo", album: "SOUR", albumArt: "https://picsum.photos/seed/good4u/200" },
-        { id: `auto-${Date.now() + 12}`, title: "Peaches", artist: "Justin Bieber ft. Daniel Caesar", album: "Justice", albumArt: "https://picsum.photos/seed/peaches/200" },
-        { id: `auto-${Date.now() + 13}`, title: "Circles", artist: "Post Malone", album: "Hollywood's Bleeding", albumArt: "https://picsum.photos/seed/circles/200" },
-        { id: `auto-${Date.now() + 14}`, title: "Sunflower", artist: "Post Malone & Swae Lee", album: "Spider-Man", albumArt: "https://picsum.photos/seed/sunflower/200" },
-        { id: `auto-${Date.now() + 15}`, title: "Save Your Tears", artist: "The Weeknd", album: "After Hours", albumArt: "https://picsum.photos/seed/saveyourtears/200" },
-        { id: `auto-${Date.now() + 16}`, title: "Stay", artist: "The Kid LAROI & Justin Bieber", album: "F*ck Love 3", albumArt: "https://picsum.photos/seed/stay/200" },
-        { id: `auto-${Date.now() + 17}`, title: "Shivers", artist: "Ed Sheeran", album: "=", albumArt: "https://picsum.photos/seed/shivers/200" },
-        { id: `auto-${Date.now() + 18}`, title: "Bad Habits", artist: "Ed Sheeran", album: "=", albumArt: "https://picsum.photos/seed/badhabits/200" },
-        { id: `auto-${Date.now() + 19}`, title: "One Dance", artist: "Drake ft. WizKid", album: "Views", albumArt: "https://picsum.photos/seed/onedance/200" },
-        { id: `auto-${Date.now() + 20}`, title: "Starboy", artist: "The Weeknd ft. Daft Punk", album: "Starboy", albumArt: "https://picsum.photos/seed/starboy/200" },
-        { id: `auto-${Date.now() + 21}`, title: "Happier", artist: "Marshmello & Bastille", album: "Single", albumArt: "https://picsum.photos/seed/happier2/200" },
-        { id: `auto-${Date.now() + 22}`, title: "Senorita", artist: "Shawn Mendes & Camila Cabello", album: "Single", albumArt: "https://picsum.photos/seed/senorita/200" },
-        { id: `auto-${Date.now() + 23}`, title: "Dance Monkey", artist: "Tones and I", album: "The Kids Are Coming", albumArt: "https://picsum.photos/seed/dancemonkey/200" },
-        { id: `auto-${Date.now() + 24}`, title: "Positions", artist: "Ariana Grande", album: "Positions", albumArt: "https://picsum.photos/seed/positions/200" },
-        { id: `auto-${Date.now() + 25}`, title: "34+35", artist: "Ariana Grande", album: "Positions", albumArt: "https://picsum.photos/seed/3435/200" },
-        { id: `auto-${Date.now() + 26}`, title: "Montero", artist: "Lil Nas X", album: "Montero", albumArt: "https://picsum.photos/seed/montero/200" },
-        { id: `auto-${Date.now() + 27}`, title: "Sweater Weather", artist: "The Neighbourhood", album: "I Love You", albumArt: "https://picsum.photos/seed/sweaterweather/200" },
-        { id: `auto-${Date.now() + 28}`, title: "Midnight Rain", artist: "Taylor Swift", album: "Midnights", albumArt: "https://picsum.photos/seed/midnightrain/200" },
-        { id: `auto-${Date.now() + 29}`, title: "Starlight", artist: "Taylor Swift", album: "Red", albumArt: "https://picsum.photos/seed/starlight/200" },
-      ];
-      
-      const randomAutoplaySong = autoplaySongs[Math.floor(Math.random() * autoplaySongs.length)];
-      const autoplayQueuedSong: QueuedSong = {
-        ...randomAutoplaySong,
-        queuedBy: { type: 'user', name: 'Autoplay' }
-      };
-      
-      // Add autoplay song to queue
-      const updatedPlaylist = {
-        ...activePlaylist,
-        queue: [autoplayQueuedSong]
-      };
-      setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
-      
-      // If nothing is currently playing, start playing the autoplay song
-      if (!isPlaying || !currentSong) {
-        setCurrentSongIndex(0);
-        setIsPlaying(true);
-        setProgress(0);
-      }
-    }
-  }, [activePlaylist?.isSessionActive, activePlaylist?.queue.length]);
 
   // Keep session data in sync across participants
   useEffect(() => {
@@ -551,10 +161,11 @@ export default function App() {
     let cancelled = false;
 
     const syncSessionState = async () => {
-      const [queueRows, participantRows, dbSongs] = await Promise.all([
+      const [queueRows, participantRows, dbSongs, dbSettings] = await Promise.all([
         fetchSessionQueue(activePlaylist.sessionId!),
         fetchSessionParticipants(activePlaylist.sessionId!),
         fetchSongsForPlaylist(activePlaylist.id),
+        fetchSessionSettings(activePlaylist.sessionId!),
       ]);
 
       if (cancelled) return;
@@ -578,25 +189,41 @@ export default function App() {
           type: p.role,
         })) ?? [];
 
-      const mappedSongs: Song[] = dbSongs.map((s) => ({
-        id: s.song_id ?? s.title,
-        title: s.title,
-        artist: s.artist,
-        album: s.album ?? "",
-        albumArt: s.album_art ?? "",
+    const mappedSongs: Song[] = dbSongs.map((s) => ({
+      id: s.song_id ?? s.title,
+      title: s.title,
+      artist: s.artist,
+      album: s.album ?? "",
+      albumArt: s.album_art ?? "",
       }));
 
       setPlaylists((prev) =>
-        prev.map((p) =>
-          p.id === activePlaylist.id
-            ? {
-                ...p,
-                queue: mappedQueue,
-                participants: mappedParticipants,
-                songs: mappedSongs,
-              }
-            : p
-        )
+        prev.map((p) => {
+          if (p.id !== activePlaylist.id) return p;
+
+          const incomingSettings = dbSettings ?? p.settings;
+          const nextSettings = incomingSettings ? { ...p.settings, ...incomingSettings } : p.settings;
+
+          // Recalculate credits for joined participants when settings change
+          let creditsRemaining = p.creditsRemaining;
+          if (p.hasJoinedSession && nextSettings.isGroupPlaylist) {
+            if (nextSettings.unlimitedQueuing) {
+              creditsRemaining = undefined;
+            } else {
+              const limit = parseInt(nextSettings.queuesPerHour, 10) || 0;
+              creditsRemaining = Math.min(creditsRemaining ?? limit, limit);
+            }
+          }
+
+          return {
+            ...p,
+            queue: mappedQueue,
+            participants: mappedParticipants,
+            songs: mappedSongs,
+            creditsRemaining,
+            settings: nextSettings,
+          };
+        })
       );
     };
 
@@ -615,6 +242,7 @@ export default function App() {
       // Song finished, advance to next song
       if (activePlaylist.isSessionActive) {
         // Remove the finished song from queue
+        const finishedSong = activePlaylist.queue[0];
         const updatedQueue = activePlaylist.queue.slice(1);
         const updatedPlaylist = {
           ...activePlaylist,
@@ -625,8 +253,15 @@ export default function App() {
         // Reset to first song (which will be the next song after removal)
         setCurrentSongIndex(0);
         setProgress(0);
+        if (updatedQueue.length === 0) {
+          setIsPlaying(false);
+        }
+
+        // Remove from Supabase queue so it doesn't reappear on sync
+        if (activePlaylist.sessionId && finishedSong) {
+          void removeSongFromSessionQueue(activePlaylist.sessionId, finishedSong.id).catch(console.error);
+        }
         
-        // The useEffect above will automatically add a new autoplay song if queue is now empty
       } else {
         // Playing from playlist (non-session mode)
         if (currentSongIndex < activePlaylist.queue.length - 1) {
@@ -634,29 +269,10 @@ export default function App() {
           setCurrentSongIndex(currentSongIndex + 1);
           setProgress(0);
         } else {
-          // Reached end of current queue, loop back to start of playlist
-          if (activePlaylist.songs.length > 0) {
-            // Queue all songs again for continuous loop
-            const queuedSongs: QueuedSong[] = activePlaylist.songs.map(song => ({
-              ...song,
-              queuedBy: { type: 'user' as const, name: 'You' }
-            }));
-            
-            const updatedPlaylist: Playlist = { 
-              ...activePlaylist, 
-              queue: queuedSongs
-            };
-            setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
-            
-            // Start from beginning
-            setCurrentSongIndex(0);
-            setProgress(0);
-          } else {
-            // No songs in playlist, stop playing
-            setIsPlaying(false);
-            setCurrentSongIndex(0);
-            setProgress(0);
-          }
+          // Reached end of current queue, stop playing
+          setIsPlaying(false);
+          setCurrentSongIndex(0);
+          setProgress(0);
         }
       }
     }
@@ -693,10 +309,27 @@ export default function App() {
     }, 5000);
   };
 
-  const handleUpdateSettings = (settings: PlaylistSettings) => {
+  const handleUpdateSettings = async (settings: PlaylistSettings) => {
     if (activePlaylist) {
-      const updatedPlaylist = { ...activePlaylist, settings };
+      let creditsRemaining = activePlaylist.creditsRemaining;
+
+      // Recalculate credits whenever settings change during an active session
+      if (activePlaylist.isSessionActive && settings.isGroupPlaylist) {
+        if (settings.unlimitedQueuing) {
+          creditsRemaining = undefined;
+        } else {
+          const limit = parseInt(settings.queuesPerHour, 10) || 0;
+          creditsRemaining = limit;
+        }
+      }
+
+      const updatedPlaylist = { ...activePlaylist, settings, creditsRemaining };
       setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
+
+      // Persist to Supabase when session is active
+      if (activePlaylist.isSessionActive && activePlaylist.sessionId) {
+        await updateSessionSettings(activePlaylist.sessionId, settings);
+      }
     }
     setShowPlaylistSettings(false);
   };
@@ -797,8 +430,26 @@ export default function App() {
       return;
     }
 
+    // Block guests when group playlist is off
+    const guestAllowed =
+      !activePlaylist.hasJoinedSession ||
+      activePlaylist.settings.isGroupPlaylist;
+    if (!guestAllowed) {
+      addNotification("Guest queuing is disabled for this session.", "info");
+      setCurrentView("playlist-view");
+      return;
+    }
+
     // Check credits (joined session)
-    if (activePlaylist.hasJoinedSession && (activePlaylist.creditsRemaining || 0) <= 0) {
+    const enforceCredits =
+      activePlaylist.hasJoinedSession &&
+      activePlaylist.settings.isGroupPlaylist &&
+      !activePlaylist.settings.unlimitedQueuing;
+    const creditLimit = parseInt(activePlaylist.settings.queuesPerHour, 10) || 0;
+    const creditsAvailable = enforceCredits
+      ? activePlaylist.creditsRemaining ?? creditLimit
+      : Infinity;
+    if (enforceCredits && creditsAvailable <= 0) {
       addNotification("You have no queues remaining", "info");
       setCurrentView("playlist-view");
       return;
@@ -806,8 +457,7 @@ export default function App() {
 
     // Limit songs to remaining credits for joined sessions
     let songsToAdd = songs;
-    if (activePlaylist.hasJoinedSession) {
-      const creditsAvailable = activePlaylist.creditsRemaining || 0;
+    if (enforceCredits) {
       songsToAdd = songs.slice(0, creditsAvailable);
     }
 
@@ -842,11 +492,8 @@ export default function App() {
     const updatedPlaylist: Playlist = {
       ...activePlaylist,
       queue: [...activePlaylist.queue, ...queuedSongs],
-      creditsRemaining: activePlaylist.hasJoinedSession
-        ? Math.max(
-            0,
-            (activePlaylist.creditsRemaining || 0) - songsToAdd.length
-          )
+      creditsRemaining: enforceCredits
+        ? Math.max(0, creditsAvailable - songsToAdd.length)
         : activePlaylist.creditsRemaining,
     };
 
@@ -867,8 +514,25 @@ export default function App() {
   const handleQuickAddToQueue = async (song: Song) => {
     if (!activePlaylist) return;
 
+    // Block guests if group playlist is off
+    const guestAllowed =
+      !activePlaylist.hasJoinedSession ||
+      activePlaylist.settings.isGroupPlaylist;
+    if (!guestAllowed) {
+      addNotification("Guest queuing is disabled for this session.", "info");
+      return;
+    }
+
     // Credits check
-    if (activePlaylist.hasJoinedSession && (activePlaylist.creditsRemaining || 0) <= 0) {
+    const enforceCredits =
+      activePlaylist.hasJoinedSession &&
+      activePlaylist.settings.isGroupPlaylist &&
+      !activePlaylist.settings.unlimitedQueuing;
+    const creditLimit = parseInt(activePlaylist.settings.queuesPerHour, 10) || 0;
+    const creditsAvailable = enforceCredits
+      ? activePlaylist.creditsRemaining ?? creditLimit
+      : Infinity;
+    if (enforceCredits && creditsAvailable <= 0) {
       addNotification("You have no queues remaining", "info");
       return;
     }
@@ -902,8 +566,8 @@ export default function App() {
     const updatedPlaylist: Playlist = {
       ...activePlaylist,
       queue: [...activePlaylist.queue, queuedSong],
-      creditsRemaining: activePlaylist.hasJoinedSession
-        ? Math.max(0, (activePlaylist.creditsRemaining || 0) - 1)
+      creditsRemaining: enforceCredits
+        ? Math.max(0, creditsAvailable - 1)
         : activePlaylist.creditsRemaining,
     };
 
@@ -972,14 +636,14 @@ export default function App() {
     if (!activePlaylist) return;
 
     // 1) Create session row in Supabase
-    const session = await createSessionInDb(activePlaylist.id, sessionCode);
+    const session = await createSessionInDb(activePlaylist.id, sessionCode, activePlaylist.settings);
     if (!session) {
       addNotification("Could not start session. Please try again.", "info");
       return;
     }
 
     // 2) Add host as participant
-    await addParticipantToSession(session.id, "You", "host");
+    const participant = await addParticipantToSession(session.id, "You", "host");
 
     // 3) Update local playlist state
     const updatedPlaylist: Playlist = {
@@ -989,8 +653,9 @@ export default function App() {
       sessionId: session.id,
       queue: [],
       hasJoinedSession: false,
+      participantId: participant?.id ?? null,
       participants: [
-        { id: "you", name: "You", type: "host" },
+        { id: participant?.id ?? "you", name: "You", type: "host" },
       ],
     };
 
@@ -1049,6 +714,16 @@ export default function App() {
       // If *host* is ending the session, also clear the DB queue
       if (activePlaylist.isSessionActive && !activePlaylist.hasJoinedSession && activePlaylist.sessionId) {
         await clearSessionQueue(activePlaylist.sessionId);
+        // Host clearing session participants is optional; keep host row
+      }
+
+      // If current user had joined a session, remove them from participants in DB
+      if (activePlaylist.hasJoinedSession && activePlaylist.sessionId && activePlaylist.participantId) {
+        try {
+          await removeParticipantFromSession(activePlaylist.sessionId, activePlaylist.participantId);
+        } catch (e) {
+          console.error(e);
+        }
       }
 
       const updatedPlaylist: Playlist = {
@@ -1083,6 +758,12 @@ export default function App() {
   const handleRemoveSong = async (songId: string) => {
     if (!activePlaylist) return;
 
+    // If host override is off, host cannot remove songs from queue
+    if (!activePlaylist.hasJoinedSession && activePlaylist.isSessionActive && !activePlaylist.settings.hostOverride) {
+      addNotification("Host override is off. You can't remove songs right now.", "info");
+      return;
+    }
+
     // If we're in a real session, also delete from Supabase
     if (activePlaylist.isSessionActive && activePlaylist.sessionId) {
       try {
@@ -1092,26 +773,13 @@ export default function App() {
       }
     }
 
+    const removedSong = activePlaylist.queue.find((song) => song.id === songId);
+
     setPlaylists((prevPlaylists) =>
       prevPlaylists.map((p) => {
         if (p.id !== activePlaylist.id) return p;
 
-        const removedSong = p.queue.find((song) => song.id === songId);
         const updatedQueue = p.queue.filter((song) => song.id !== songId);
-
-        if (removedSong) {
-          const newNotification = {
-            id: Date.now().toString(),
-            message: `🗑️ You removed "${removedSong.title}" from queue`,
-            type: "info" as const,
-          };
-          setNotifications((prev) => [...prev, newNotification]);
-          setTimeout(() => {
-            setNotifications((prev) =>
-              prev.filter((n) => n.id !== newNotification.id)
-            );
-          }, 3000);
-        }
 
         if (currentSongIndex === 0 && isPlaying) {
           if (updatedQueue.length > 0) {
@@ -1130,10 +798,11 @@ export default function App() {
         };
       })
     );
-  };
 
-
-  const handleJoinSession = async (code: string) => {
+    if (removedSong) {
+      addNotification(`You removed "${removedSong.title}" from queue`, "info");
+    }
+  };  const handleJoinSession = async (code: string) => {
     const trimmedCode = code.trim().toUpperCase();
     if (!trimmedCode) return;
 
@@ -1145,7 +814,7 @@ export default function App() {
     }
 
     // 2) Add "You" as a participant
-    await addParticipantToSession(session.id, "You", "user");
+    const participant = await addParticipantToSession(session.id, "You", "user");
 
     // 3) Fetch queue, participants, and playlist songs
     const [queueRows, participantRows, dbSongs] = await Promise.all([
@@ -1193,6 +862,10 @@ export default function App() {
     // 5) Put this into your playlists state
     setPlaylists((prev) => {
       const existing = prev.find((p) => p.id === session.playlist_id);
+      const settings = session.settings
+        ? { ...defaultSettings, ...session.settings }
+        : existing?.settings ?? { ...defaultSettings, isGroupPlaylist: true };
+      const creditLimit = parseInt(settings.queuesPerHour, 10) || 0;
       const updated: Playlist = {
         id: session.playlist_id,
         name: existing?.name ?? playlistName,
@@ -1203,10 +876,11 @@ export default function App() {
         sessionId: session.id,
         queue: mappedQueue,
         hasJoinedSession: true,
-        settings: existing?.settings ?? defaultSettings,
+        participantId: participant?.id ?? null,
+        settings,
         participants: mappedParticipants,
         skipVotes: new Set(),
-        creditsRemaining: 3,
+        creditsRemaining: settings.unlimitedQueuing ? undefined : (creditLimit || undefined),
         hasVotedToSkip: false,
       };
 
@@ -1355,6 +1029,7 @@ export default function App() {
       return <SessionView 
         playlistName={activePlaylist.name}
         onStartSession={handleStartSession}
+        onOpenSettings={() => setShowPlaylistSettings(true)}
       />;
     } else if (currentView === "playlist-view" && activePlaylist) {
       return <PlaylistView 
@@ -1369,10 +1044,10 @@ export default function App() {
         onStopSession={handleStopSession}
         queue={activePlaylist.queue}
         hasJoinedSession={activePlaylist.hasJoinedSession}
-        onOpenSettings={() => setShowPlaylistSettings(true)}
         onQueueReorder={handleQueueReorder}
         onRemoveSong={handleRemoveSong}
         autoplayMode={activePlaylist.settings.autoplayMode}
+        settings={activePlaylist.settings}
         sessionCode={activePlaylist.sessionCode}
         participants={activePlaylist.participants}
         notifications={activePlaylist.isSessionActive ? notifications : undefined}
@@ -1416,7 +1091,6 @@ export default function App() {
         playlistTitle={activePlaylist?.name}
         isSessionActive={activePlaylist?.isSessionActive && currentView === "playlist-view"}
         onStopSession={handleStopSession}
-        onOpenSettings={currentView === "playlist-view" && activePlaylist && !activePlaylist?.isSessionActive ? () => setShowPlaylistSettings(true) : undefined}
         hasJoinedSession={activePlaylist?.hasJoinedSession}
       />
       
@@ -1533,3 +1207,4 @@ export default function App() {
     </div>
   );
 }
+

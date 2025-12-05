@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, Plus, Undo2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { fetchCatalogSongs, type DbCatalogSong } from "../backend";
 
 interface Song {
   id: string;
@@ -17,51 +18,57 @@ interface SearchSongsProps {
   onQuickAdd?: (song: Song) => void;
 }
 
+
 interface AddedNotification {
   id: string;
   song: Song;
 }
 
-// Mock popular songs
-const popularSongs: Song[] = [
-  { id: "1", title: "Blinding Lights", artist: "The Weeknd", album: "After Hours", albumArt: "https://picsum.photos/seed/afterhours/200" },
-  { id: "2", title: "Save Your Tears", artist: "The Weeknd", album: "After Hours", albumArt: "https://picsum.photos/seed/afterhours/200" },
-  { id: "3", title: "Levitating", artist: "Dua Lipa", album: "Future Nostalgia", albumArt: "https://picsum.photos/seed/futurenostalgia/200" },
-  { id: "4", title: "Don't Start Now", artist: "Dua Lipa", album: "Future Nostalgia", albumArt: "https://picsum.photos/seed/futurenostalgia/200" },
-  { id: "5", title: "Peaches", artist: "Justin Bieber", album: "Justice", albumArt: "https://picsum.photos/seed/justice/200" },
-  { id: "6", title: "Good 4 U", artist: "Olivia Rodrigo", album: "SOUR", albumArt: "https://picsum.photos/seed/sour/200" },
-  { id: "7", title: "Positions", artist: "Ariana Grande", album: "Positions", albumArt: "https://picsum.photos/seed/positions/200" },
-  { id: "8", title: "Watermelon Sugar", artist: "Harry Styles", album: "Fine Line", albumArt: "https://picsum.photos/seed/fineline/200" },
-  { id: "9", title: "Circles", artist: "Post Malone", album: "Hollywood's Bleeding", albumArt: "https://picsum.photos/seed/hollywoodsbleeding/200" },
-  { id: "10", title: "Savage Love", artist: "Jawsh 685 & Jason Derulo", album: "Savage Love", albumArt: "https://picsum.photos/seed/savagelove/200" },
-];
-
-// Mock search results (in real app, this would call an API)
-const allSongs: Song[] = [
-  ...popularSongs,
-  { id: "11", title: "Thriller", artist: "Michael Jackson", album: "Thriller", albumArt: "https://picsum.photos/seed/thriller/200" },
-  { id: "12", title: "Billie Jean", artist: "Michael Jackson", album: "Thriller", albumArt: "https://picsum.photos/seed/thriller/200" },
-  { id: "13", title: "Beat It", artist: "Michael Jackson", album: "Thriller", albumArt: "https://picsum.photos/seed/thriller/200" },
-  { id: "14", title: "Bohemian Rhapsody", artist: "Queen", album: "A Night at the Opera", albumArt: "https://picsum.photos/seed/queennight/200" },
-  { id: "15", title: "Hotel California", artist: "Eagles", album: "Hotel California", albumArt: "https://picsum.photos/seed/hotelcalifornia/200" },
-  { id: "16", title: "Smells Like Teen Spirit", artist: "Nirvana", album: "Nevermind", albumArt: "https://picsum.photos/seed/nevermind/200" },
-  { id: "17", title: "Shape of You", artist: "Ed Sheeran", album: "÷", albumArt: "https://picsum.photos/seed/divide/200" },
-  { id: "18", title: "Uptown Funk", artist: "Mark Ronson ft. Bruno Mars", album: "Uptown Special", albumArt: "https://picsum.photos/seed/uptownspecial/200" },
-];
+const mapCatalogToSong = (s: DbCatalogSong): Song => ({
+  id: s.song_id,
+  title: s.title,
+  artist: s.artist,
+  album: s.album ?? "",
+  albumArt: s.album_art ?? "",
+});
 
 export function SearchSongs({ onAddSongs, selectedSongs, mode = 'select', onQuickAdd }: SearchSongsProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [localSelectedSongs, setLocalSelectedSongs] = useState<Song[]>(selectedSongs);
   const [addedNotifications, setAddedNotifications] = useState<AddedNotification[]>([]);
   const [removedSongIds, setRemovedSongIds] = useState<Set<string>>(new Set());
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const displayedSongs = (searchQuery.trim() === ""
-    ? popularSongs
-    : allSongs.filter(song => 
-        song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        song.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        song.album.toLowerCase().includes(searchQuery.toLowerCase())
-      )).filter(song => !removedSongIds.has(song.id));
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await fetchCatalogSongs();
+        setSongs(data.map(mapCatalogToSong));
+      } catch (e: any) {
+        setError("Could not load songs. Please try again.");
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const displayedSongs = songs
+    .filter(song => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        song.title.toLowerCase().includes(q) ||
+        song.artist.toLowerCase().includes(q) ||
+        song.album.toLowerCase().includes(q)
+      );
+    })
+    .filter(song => !removedSongIds.has(song.id));
 
   const toggleSongSelection = (song: Song) => {
     if (mode === 'quick-add' && onQuickAdd) {
@@ -147,8 +154,11 @@ export function SearchSongs({ onAddSongs, selectedSongs, mode = 'select', onQuic
 
       {/* Section Header */}
       <h2 className="text-white text-xl mb-4">
-        {searchQuery.trim() === "" ? "Popular Songs" : `Search Results (${displayedSongs.length})`}
+        {searchQuery.trim() === "" ? "Songs" : `Search Results (${displayedSongs.length})`}
       </h2>
+
+      {loading && <p className="text-gray-400 mb-4">Loading songs...</p>}
+      {error && <p className="text-red-400 mb-4">{error}</p>}
 
       {/* Songs List */}
       <div className="space-y-2">

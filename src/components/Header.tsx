@@ -1,4 +1,4 @@
-import { Search, Plus, Wifi, Battery, Signal, BellOff, ArrowLeft, Filter, Settings } from "lucide-react";
+import { Search, Plus, Wifi, Battery, Signal, BellOff, ArrowLeft, Filter } from "lucide-react";
 
 interface HeaderProps {
   onSearchClick: () => void;
@@ -9,11 +9,10 @@ interface HeaderProps {
   isSessionActive?: boolean;
   onStopSession?: () => void;
   onStartSession?: () => void;
-  onOpenSettings?: () => void;
   hasJoinedSession?: boolean;
 }
 
-export function Header({ onSearchClick, currentView, onBack, onPlusClick, playlistTitle, isSessionActive, onStopSession, onStartSession, onOpenSettings, hasJoinedSession }: HeaderProps) {
+export function Header({ onSearchClick, currentView, onBack, onPlusClick, playlistTitle, isSessionActive, onStopSession, onStartSession, hasJoinedSession }: HeaderProps) {
   const getTitle = () => {
     if (currentView === "playlist-view" && playlistTitle) {
       return playlistTitle;
@@ -96,23 +95,14 @@ export function Header({ onSearchClick, currentView, onBack, onPlusClick, playli
             >
               {hasJoinedSession ? 'Leave Session' : 'End Session'}
             </button>
-          ) : currentView === "playlist-view" && playlistTitle && onOpenSettings ? (
-            <button 
-              onClick={onOpenSettings}
-              className="hover:scale-110 transition-transform"
-            >
-              <Settings size={28} className="text-white" />
-            </button>
           ) : (
             <>
-              <button onClick={onSearchClick} className="hover:scale-110 transition-transform">
-                <Search size={28} className={currentView === "home" ? "text-white" : "bg-gradient-to-br from-[#852654] to-[#6343b8] bg-clip-text text-transparent"} style={currentView === "home" ? {} : { WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }} />
-              </button>
-              {onPlusClick && (
-                <button onClick={onPlusClick} className="hover:scale-110 transition-transform">
-                  <Plus size={32} className={currentView === "home" ? "text-white" : "bg-gradient-to-br from-[#852654] to-[#6343b8] bg-clip-text text-transparent"} style={currentView === "home" ? {} : { WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }} />
+              {currentView !== "playlist-view" && currentView !== "home" && currentView !== "join-group" && currentView !== "session-setup" && (
+                <button onClick={onSearchClick} className="hover:scale-110 transition-transform">
+                  <Search size={28} className="bg-gradient-to-br from-[#852654] to-[#6343b8] bg-clip-text text-transparent" style={{ WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }} />
                 </button>
               )}
+              {/* Plus button removed per request */}
             </>
           )}
         </div>
