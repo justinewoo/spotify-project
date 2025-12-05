@@ -14,6 +14,8 @@ interface Song {
 interface SearchSongsProps {
   onAddSongs: (songs: Song[]) => void;
   selectedSongs: Song[];
+  playlists?: { id: string; name: string }[];
+  onAddToSpecificPlaylist?: (playlistId: string, songs: Song[]) => void;
   mode?: 'select' | 'quick-add';
   onQuickAdd?: (song: Song) => void;
 }
@@ -32,7 +34,7 @@ const mapCatalogToSong = (s: DbCatalogSong): Song => ({
   albumArt: s.album_art ?? "",
 });
 
-export function SearchSongs({ onAddSongs, selectedSongs, mode = 'select', onQuickAdd }: SearchSongsProps) {
+export function SearchSongs({ onAddSongs, selectedSongs, playlists = [], onAddToSpecificPlaylist, mode = 'select', onQuickAdd }: SearchSongsProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [localSelectedSongs, setLocalSelectedSongs] = useState<Song[]>(selectedSongs);
   const [addedNotifications, setAddedNotifications] = useState<AddedNotification[]>([]);
@@ -40,6 +42,13 @@ export function SearchSongs({ onAddSongs, selectedSongs, mode = 'select', onQuic
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset local selection when incoming selection or mode changes (e.g., reopening the view)
+  useEffect(() => {
+    setLocalSelectedSongs(selectedSongs);
+    setRemovedSongIds(new Set());
+    setAddedNotifications([]);
+  }, [selectedSongs, mode]);
 
   useEffect(() => {
     const load = async () => {
@@ -103,8 +112,12 @@ export function SearchSongs({ onAddSongs, selectedSongs, mode = 'select', onQuic
     return localSelectedSongs.some(s => s.id === songId);
   };
 
-  const handleDone = () => {
-    onAddSongs(localSelectedSongs);
+  const handleDone = (targetPlaylistId?: string) => {
+    if (targetPlaylistId && onAddToSpecificPlaylist) {
+      onAddToSpecificPlaylist(targetPlaylistId, localSelectedSongs);
+    } else {
+      onAddSongs(localSelectedSongs);
+    }
   };
 
   const handleUndo = (notification: AddedNotification) => {
@@ -139,16 +152,31 @@ export function SearchSongs({ onAddSongs, selectedSongs, mode = 'select', onQuic
 
       {/* Selected Count and Done Button - Only in select mode */}
       {mode === 'select' && localSelectedSongs.length > 0 && (
-        <div className="mb-6 flex items-center justify-between bg-gradient-to-r from-[#6343b8]/20 to-[#9141a9]/20 border border-[#6343b8]/30 rounded-lg px-4 py-3">
-          <span className="text-white">
-            {localSelectedSongs.length} song{localSelectedSongs.length !== 1 ? 's' : ''} selected
-          </span>
-          <button
-            onClick={handleDone}
-            className="px-6 py-2 bg-gradient-to-r from-[#6343b8] to-[#9141a9] text-white rounded-lg hover:brightness-110 transition-all"
-          >
-            Done
-          </button>
+        <div className="mb-6 space-y-3 bg-gradient-to-r from-[#6343b8]/20 to-[#9141a9]/20 border border-[#6343b8]/30 rounded-lg px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-white">
+              {localSelectedSongs.length} song{localSelectedSongs.length !== 1 ? 's' : ''} selected
+            </span>
+            <button
+              onClick={() => handleDone()}
+              className="px-4 py-2 bg-gradient-to-r from-[#6343b8] to-[#9141a9] text-white rounded-lg hover:brightness-110 transition-all"
+            >
+              Add to current
+            </button>
+          </div>
+          {playlists.length > 0 && (
+            <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
+              {playlists.map((pl) => (
+                <button
+                  key={pl.id}
+                  onClick={() => handleDone(pl.id)}
+                  className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-white whitespace-nowrap hover:bg-white/15 transition-colors"
+                >
+                  Add to {pl.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

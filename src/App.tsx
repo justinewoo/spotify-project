@@ -129,17 +129,30 @@ export default function App() {
     const loadPlaylists = async () => {
       const dbPlaylists = await fetchPlaylists();
 
-      const mapped = dbPlaylists.map((p) => ({
-        id: p.id,
-        name: p.name,
-        albumArt: p.album_art,
-        songs: [],
-        isSessionActive: false,
-        sessionCode: null,
-        queue: [],
-        hasJoinedSession: false,
-        settings: { ...defaultSettings },
-      })) as Playlist[];
+      const mapped = await Promise.all(
+        dbPlaylists.map(async (p) => {
+          const dbSongs = await fetchSongsForPlaylist(p.id);
+          const mappedSongs: Song[] = dbSongs.map((s) => ({
+            id: s.song_id,
+            title: s.title,
+            artist: s.artist,
+            album: s.album ?? "",
+            albumArt: s.album_art ?? "",
+          }));
+
+          return {
+            id: p.id,
+            name: p.name,
+            albumArt: p.album_art,
+            songs: mappedSongs,
+            isSessionActive: false,
+            sessionCode: null,
+            queue: [],
+            hasJoinedSession: false,
+            settings: { ...defaultSettings },
+          } as Playlist;
+        })
+      );
 
       setPlaylists(mapped);
     };
@@ -421,6 +434,42 @@ export default function App() {
       );
     }
     setCurrentView("playlist-view");
+  };
+
+  // Add songs to an arbitrary playlist (used by search when choosing a target playlist)
+  const addSongsToPlaylist = async (playlistId: string, songsToAdd: Song[]) => {
+    if (!songsToAdd.length) return;
+
+    // Get current songs for that playlist (from state, or fallback to fetch)
+    let target = playlists.find(p => p.id === playlistId);
+    if (!target) {
+      const dbSongs = await fetchSongsForPlaylist(playlistId);
+      target = {
+        id: playlistId,
+        name: "Playlist",
+        albumArt: null,
+        songs: dbSongs.map(s => ({
+          id: s.song_id,
+          title: s.title,
+          artist: s.artist,
+          album: s.album ?? "",
+          albumArt: s.album_art ?? "",
+        })),
+        isSessionActive: false,
+        sessionCode: null,
+        queue: [],
+        hasJoinedSession: false,
+        settings: { ...defaultSettings },
+      };
+    }
+
+    const mergedSongs = [...target.songs, ...songsToAdd];
+
+    await setSongsForPlaylist(playlistId, mergedSongs);
+
+    setPlaylists(prev =>
+      prev.map(p => p.id === playlistId ? { ...p, songs: mergedSongs } : p)
+    );
   };
 
 
@@ -930,11 +979,18 @@ export default function App() {
   };
 
   const handleSearchClick = () => {
+    setPreviousView(currentView);
     setCurrentView("search");
   };
 
   const handleBack = () => {
-    setCurrentView(currentView === "add-songs" || currentView === "add-to-queue" ? previousView : "home");
+    setCurrentView(
+      currentView === "add-songs" ||
+      currentView === "add-to-queue" ||
+      currentView === "search"
+        ? previousView
+        : "home"
+    );
   };
 
   const handlePlaySong = (songId: string) => {
@@ -964,23 +1020,36 @@ export default function App() {
     setProgress(0);
   };
 
-  const handleRemovePlaylistSong = (songId: string) => {
+  // For the global search view when launched from the dashboard header.
+  const handleSearchAddSongs = (songs: Song[]) => {
+    if (activePlaylist) {
+      void handleAddSongs(songs);
+    }
+    // If no active playlist, just return to home after search
+    setCurrentView("home");
+  };
+
+  const handleRemovePlaylistSong = async (songId: string) => {
     if (!activePlaylist) return;
     
-    const updatedPlaylist: Playlist = {
-      ...activePlaylist,
-      songs: activePlaylist.songs.filter(song => song.id !== songId)
-    };
+    const newSongs = activePlaylist.songs.filter(song => song.id !== songId);
+    const updatedPlaylist: Playlist = { ...activePlaylist, songs: newSongs };
+
+    // Persist to Supabase so the removal sticks across reloads
+    await setSongsForPlaylist(activePlaylist.id, newSongs);
+
     setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
   };
 
-  const handlePlaylistReorder = (newSongs: Song[]) => {
+  const handlePlaylistReorder = async (newSongs: Song[]) => {
     if (!activePlaylist) return;
     
     const updatedPlaylist: Playlist = {
       ...activePlaylist,
       songs: newSongs
     };
+
+    await setSongsForPlaylist(activePlaylist.id, newSongs);
     setPlaylists(playlists.map(p => p.id === activePlaylist.id ? updatedPlaylist : p));
   };
 
@@ -1025,6 +1094,20 @@ export default function App() {
       return <JoinSession onJoinSession={handleJoinSession} />;
     } else if (currentView === "playlists") {
       return <MyPlaylists playlists={playlists} onPlaylistClick={handlePlaylistClick} />;
+    } else if (currentView === "search") {
+      return (
+        <SearchSongs
+          onAddSongs={handleSearchAddSongs}
+          selectedSongs={[]}
+          playlists={playlists.map(p => ({ id: p.id, name: p.name }))}
+          onAddToSpecificPlaylist={(playlistId, songs) => {
+            void addSongsToPlaylist(playlistId, songs);
+            setCurrentView("home");
+          }}
+          mode="select"
+          onQuickAdd={undefined}
+        />
+      );
     } else if (currentView === "session-setup" && activePlaylist) {
       return <SessionView 
         playlistName={activePlaylist.name}
