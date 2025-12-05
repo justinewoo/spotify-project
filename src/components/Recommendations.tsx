@@ -79,6 +79,23 @@ export function Recommendations({ onClose, onAddSong, onQueueSong }: Recommendat
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<DbCatalogSong[]>([]);
+  const [activityFilterOn, setActivityFilterOn] = useState(false);
+  const [activity, setActivity] = useState<string>("");
+  const [timeFilterOn, setTimeFilterOn] = useState(false);
+  const [timeOfDay, setTimeOfDay] = useState<string>("");
+
+  const activityOptions = [
+    "workout",
+    "chill",
+    "studying",
+    "cooking",
+    "gaming",
+    "dancing",
+    "road trip",
+    "commute",
+  ];
+
+  const timeOptions = ["morning", "afternoon", "evening", "night"];
 
   const handleAddBlockedArtist = () => {
     if (artistInput.trim() && !blockedArtists.includes(artistInput.trim())) {
@@ -142,13 +159,38 @@ export function Recommendations({ onClose, onAddSong, onQueueSong }: Recommendat
         return;
       }
 
+      // Apply activity preference (soft filter: prefer matches, fall back if none)
+      const activityTag = activityFilterOn && activity ? activity.toLowerCase() : null;
+      const timeTag = timeFilterOn && timeOfDay ? timeOfDay.toLowerCase() : null;
+
+      const byActivity = activityTag
+        ? filtered.filter((song) => song.tags?.some((t) => t?.toLowerCase?.() === activityTag))
+        : filtered;
+      const byTime = timeTag
+        ? filtered.filter((song) => song.tags?.some((t) => t?.toLowerCase?.() === timeTag))
+        : filtered;
+
+      // Build a pool preferring matches on both activity and time, then either, then any
+      const pool =
+        (activityTag || timeTag)
+          ? (byActivity.filter((s) => byTime.includes(s)).length
+              ? byActivity.filter((s) => byTime.includes(s))
+              : (byActivity.length ? byActivity : byTime.length ? byTime : filtered))
+          : filtered;
+
       // Score by closeness to sliders and always return at least 1 (up to 5)
-      const scored = filtered
+      const scored = pool
         .map((song) => {
+          const activityBonus =
+            activityTag && song.tags?.some((t) => t?.toLowerCase?.() === activityTag) ? -15 : 0;
+          const timeBonus =
+            timeTag && song.tags?.some((t) => t?.toLowerCase?.() === timeTag) ? -10 : 0;
           const score =
             Math.abs(song.energy - energy) +
             Math.abs(song.danceability - danceability) +
-            Math.abs(song.popularity - popularity);
+            Math.abs(song.popularity - popularity) +
+            activityBonus +
+            timeBonus; // small bonus for activity/time match
           return { song, score };
         })
         .sort((a, b) => a.score - b.score)
@@ -219,6 +261,76 @@ export function Recommendations({ onClose, onAddSong, onQueueSong }: Recommendat
                 `}
               />
             </button>
+          </div>
+
+          {/* Activity Filter */}
+          <div className="pt-4 border-t border-zinc-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-white">Filter by Activity</label>
+              <button
+                onClick={() => setActivityFilterOn(!activityFilterOn)}
+                className={`
+                  relative w-12 h-6 rounded-full transition-colors
+                  ${activityFilterOn ? 'bg-gradient-to-r from-[#6343b8] to-[#9141a9]' : 'bg-zinc-700'}
+                `}
+              >
+                <div
+                  className={`
+                    absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform
+                    ${activityFilterOn ? 'translate-x-6' : 'translate-x-0'}
+                  `}
+                />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-gray-400">Activity</label>
+              <select
+                disabled={!activityFilterOn}
+                value={activity}
+                onChange={(e) => setActivity(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2 border border-zinc-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:border-[#6343b8]"
+              >
+                <option value="">Select activity</option>
+                {activityOptions.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Time of Day Filter */}
+          <div className="pt-4 border-t border-zinc-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-white">Filter by Time of Day</label>
+              <button
+                onClick={() => setTimeFilterOn(!timeFilterOn)}
+                className={`
+                  relative w-12 h-6 rounded-full transition-colors
+                  ${timeFilterOn ? 'bg-gradient-to-r from-[#6343b8] to-[#9141a9]' : 'bg-zinc-700'}
+                `}
+              >
+                <div
+                  className={`
+                    absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform
+                    ${timeFilterOn ? 'translate-x-6' : 'translate-x-0'}
+                  `}
+                />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-gray-400">Time of Day</label>
+              <select
+                disabled={!timeFilterOn}
+                value={timeOfDay}
+                onChange={(e) => setTimeOfDay(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2 border border-zinc-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:border-[#6343b8]"
+              >
+                <option value="">Select time</option>
+                {timeOptions.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Block Artists */}
