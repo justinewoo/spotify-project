@@ -22,6 +22,7 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
   const [isGroupPlaylist, setIsGroupPlaylist] = useState(initialSettings.isGroupPlaylist);
   const [unlimitedQueuing, setUnlimitedQueuing] = useState(initialSettings.unlimitedQueuing);
   const [queuesPerHour, setQueuesPerHour] = useState(initialSettings.queuesPerHour);
+  const [autoplayMode] = useState(initialSettings.autoplayMode);
   const [hostOverride, setHostOverride] = useState(initialSettings.hostOverride);
   const [voteToSkip] = useState(initialSettings.voteToSkip);
   const [skipPercentage] = useState(initialSettings.skipPercentage);
@@ -31,6 +32,7 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
     isGroupPlaylist !== initialSettings.isGroupPlaylist ||
     unlimitedQueuing !== initialSettings.unlimitedQueuing ||
     queuesPerHour !== initialSettings.queuesPerHour ||
+    autoplayMode !== initialSettings.autoplayMode ||
     hostOverride !== initialSettings.hostOverride ||
     voteToSkip !== initialSettings.voteToSkip ||
     skipPercentage !== initialSettings.skipPercentage;
@@ -40,6 +42,7 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
       isGroupPlaylist,
       unlimitedQueuing,
       queuesPerHour,
+      autoplayMode,
       hostOverride,
       voteToSkip,
       skipPercentage
