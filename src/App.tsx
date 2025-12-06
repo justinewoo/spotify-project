@@ -324,7 +324,7 @@ export default function App() {
     if (!activePlaylist?.isSessionActive || activePlaylist.settings.isPrivateSession) return;
     if (!activePlaylist.sessionId) return;
 
-    const addDemoBurst = async (forceNewParticipant: boolean = false) => {
+    const addDemoBurst: (forceNewParticipant?: boolean) => Promise<void> = async (forceNewParticipant = false) => {
       // Get current participants to pick an existing guest if possible
       const refreshedParticipants = await fetchSessionParticipants(activePlaylist.sessionId!);
       const guests = refreshedParticipants.filter((p) => p.role === "guest");
