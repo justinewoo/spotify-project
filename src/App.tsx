@@ -324,7 +324,7 @@ export default function App() {
     if (!activePlaylist?.isSessionActive || activePlaylist.settings.isPrivateSession) return;
     if (!activePlaylist.sessionId) return;
 
-    const addDemoBurst = async () => {
+    const addDemoBurst = async (forceNewParticipant: boolean = false) => {
       // Get current participants to pick an existing guest if possible
       const refreshedParticipants = await fetchSessionParticipants(activePlaylist.sessionId!);
       const guests = refreshedParticipants.filter((p) => p.role === "guest");
@@ -332,7 +332,7 @@ export default function App() {
       let chosenName: string | null = null;
       let addedParticipant = null;
 
-      if (guests.length > 0) {
+      if (guests.length > 0 && !forceNewParticipant) {
         chosenName = guests[Math.floor(Math.random() * guests.length)].name;
       } else {
         chosenName = demoNames[Math.floor(Math.random() * demoNames.length)];
