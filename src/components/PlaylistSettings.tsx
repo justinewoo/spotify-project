@@ -10,6 +10,7 @@ interface PlaylistSettings {
   hostOverride: boolean;
   voteToSkip: boolean;
   skipPercentage: string;
+  isPrivateSession?: boolean;
 }
 
 interface PlaylistSettingsProps {
@@ -26,6 +27,7 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
   const [hostOverride, setHostOverride] = useState(initialSettings.hostOverride);
   const [voteToSkip] = useState(initialSettings.voteToSkip);
   const [skipPercentage] = useState(initialSettings.skipPercentage);
+  const [isPrivateSession, setIsPrivateSession] = useState(initialSettings.isPrivateSession ?? false);
 
   // Check if any settings have changed
   const hasChanges = 
@@ -35,13 +37,15 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
     autoplayMode !== initialSettings.autoplayMode ||
     hostOverride !== initialSettings.hostOverride ||
     voteToSkip !== initialSettings.voteToSkip ||
-    skipPercentage !== initialSettings.skipPercentage;
+    skipPercentage !== initialSettings.skipPercentage ||
+    isPrivateSession !== (initialSettings.isPrivateSession ?? false);
 
   const handleSave = () => {
     onSave({
       isGroupPlaylist,
       unlimitedQueuing,
       queuesPerHour,
+      isPrivateSession,
       autoplayMode,
       hostOverride,
       voteToSkip,
@@ -100,6 +104,22 @@ export function PlaylistSettings({ settings: initialSettings, onSave, onClose }:
                   <span
                     className="absolute h-5 w-5 rounded-full bg-white shadow transition-all"
                     style={{ left: isGroupPlaylist ? 'calc(100% - 24px)' : '4px' }}
+                  />
+                </button>
+              </div>
+
+              {/* Session Privacy Toggle */}
+              <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-800">
+                <span className="text-white text-lg">Private Session (login required)</span>
+                <button
+                  onClick={() => setIsPrivateSession(!isPrivateSession)}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full px-1 transition-colors ${
+                    isPrivateSession ? 'bg-gradient-to-r from-pink-500 to-purple-500' : 'bg-zinc-700'
+                  }`}
+                >
+                  <span
+                    className="absolute h-5 w-5 rounded-full bg-white shadow transition-all"
+                    style={{ left: isPrivateSession ? 'calc(100% - 24px)' : '4px' }}
                   />
                 </button>
               </div>

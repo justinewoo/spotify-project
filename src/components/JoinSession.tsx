@@ -2,18 +2,19 @@ import { QrCode, Keyboard } from "lucide-react";
 import { useState } from "react";
 
 interface JoinSessionProps {
-  onJoinSession: (code: string) => void;
+  onJoinSession: (code: string, displayName?: string) => void;
 }
 
 export function JoinSession({ onJoinSession }: JoinSessionProps) {
   const [selectedMethod, setSelectedMethod] = useState<'qr' | 'manual'>('qr');
   const [sessionCode, setSessionCode] = useState('');
+  const [displayName, setDisplayName] = useState('');
 
   const handleSubmit = () => {
     if (sessionCode.trim() || selectedMethod === 'qr') {
       // For QR code, we'll use a mock code. In a real app, this would come from scanning
       const code = selectedMethod === 'qr' ? 'SCANNED' : sessionCode.toUpperCase();
-      onJoinSession(code);
+      onJoinSession(code, displayName.trim() || undefined);
     }
   };
 
@@ -78,6 +79,17 @@ export function JoinSession({ onJoinSession }: JoinSessionProps) {
             <p className="text-gray-400 text-sm mt-2 text-center">
               Enter the 5-letter code shared by the host
             </p>
+            <div className="mt-6">
+              <label className="block text-white mb-2">Your Name (optional)</label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="How should we show you?"
+                maxLength={24}
+                className="w-full p-4 bg-gray-800 border border-gray-700 rounded-lg text-white text-center focus:outline-none focus:border-[#6343b8]"
+              />
+            </div>
           </div>
         )}
       </div>

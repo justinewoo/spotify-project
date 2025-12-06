@@ -9,13 +9,15 @@ import { SessionView } from "./components/SessionView";
 import { JoinSession } from "./components/JoinSession";
 import { PlaylistSettings } from "./components/PlaylistSettings";
 import { MyPlaylists } from "./components/MyPlaylists";
+import { LoginModal } from "./components/LoginModal";
 import { Recommendations } from "./components/Recommendations";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Undo2 } from "lucide-react";
 import {
-  fetchPlaylists,
+  fetchUserPlaylists,
   createPlaylistInDb,
+  getOrCreateUser,
   fetchSongsForPlaylist,
   setSongsForPlaylist,
   createSessionInDb,
@@ -61,6 +63,7 @@ interface PlaylistSettings {
   hostOverride: boolean;
   voteToSkip: boolean;
   skipPercentage: string;
+  isPrivateSession?: boolean;
 }
 
 const defaultSettings: PlaylistSettings = {
@@ -71,6 +74,7 @@ const defaultSettings: PlaylistSettings = {
   hostOverride: false,
   voteToSkip: false,
   skipPercentage: "50",
+  isPrivateSession: false,
 };
 
 interface Playlist {
@@ -108,6 +112,31 @@ interface SessionNotification {
   isCreated?: boolean;
 }
 
+interface AppUser {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
+const demoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+const demoNames = ["Skyler", "Alex", "Jordan", "Taylor", "Morgan", "Jamie", "Riley", "Casey"];
+const demoAdjectives = ["Midnight", "Sunset", "Electric", "Golden", "Velvet", "Neon", "Forest", "Ocean", "Crimson", "Silver"];
+const demoNouns = ["Drive", "Breeze", "Pulse", "Echoes", "Starlight", "Waves", "Anthem", "Skyline", "Flicker", "Voyage"];
+const demoArtists = ["Neon Roads", "Lo-Fi Lanes", "Cardio Crew", "Focus Fields", "Harbor Lights", "City Lanterns", "Freeway Flyers", "Soft Currents", "Night Desk", "Stereo Pulse"];
+const makeDemoSong = (): Song => {
+  const adj = demoAdjectives[Math.floor(Math.random() * demoAdjectives.length)];
+  const noun = demoNouns[Math.floor(Math.random() * demoNouns.length)];
+  const artist = demoArtists[Math.floor(Math.random() * demoArtists.length)];
+  const seed = `${adj}-${noun}-${Math.floor(Math.random() * 100000)}`;
+  return {
+    id: `demo-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    title: `${adj} ${noun}`,
+    artist,
+    album: `${adj} Collection`,
+    albumArt: `https://picsum.photos/seed/${encodeURIComponent(seed)}/300`,
+  };
+};
+
 export default function App() {
   const [currentView, setCurrentView] = useState<string>("home");
   const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
@@ -124,10 +153,20 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const SONG_DURATION = 10; // 10 seconds per song
+  const participantCacheRef = useRef<Map<string, Set<string>>>(new Map());
+  const notifiedQueueRef = useRef<Set<string>>(new Set());
+  const notifiedParticipantRef = useRef<Set<string>>(new Set());
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [showLogin, setShowLogin] = useState(true);
 
   useEffect(() => {
     const loadPlaylists = async () => {
-      const dbPlaylists = await fetchPlaylists();
+      if (!currentUser) {
+        setPlaylists([]);
+        return;
+      }
+
+      const dbPlaylists = await fetchUserPlaylists(currentUser.id);
 
       const mapped = await Promise.all(
         dbPlaylists.map(async (p) => {
@@ -158,7 +197,7 @@ export default function App() {
     };
 
     loadPlaylists();
-  }, []);
+  }, [currentUser]);
 
   const activePlaylist = playlists.find(p => p.id === activePlaylistId);
 
@@ -210,6 +249,13 @@ export default function App() {
       albumArt: s.album_art ?? "",
       }));
 
+      // Detect newly added participants using a ref cache (so we don't fire every poll)
+      const sessionKey = activePlaylist.sessionId ?? activePlaylist.id;
+      const prevSet = participantCacheRef.current.get(sessionKey) ?? new Set<string>();
+      const currentSet = new Set(mappedParticipants.map((p) => p.id));
+      const newParticipants = mappedParticipants.filter((mp) => !prevSet.has(mp.id));
+      participantCacheRef.current.set(sessionKey, currentSet);
+
       setPlaylists((prev) =>
         prev.map((p) => {
           if (p.id !== activePlaylist.id) return p;
@@ -228,6 +274,15 @@ export default function App() {
             }
           }
 
+          // Notify on newly seen queued songs (from anyone), de-duped by queue id
+          mappedQueue.forEach((q) => {
+            if (!notifiedQueueRef.current.has(q.id)) {
+              const byName = q.queuedBy?.name ?? "Someone";
+              addNotification(`Queued "${q.title}" by ${q.artist} (by ${byName})`, "info");
+              notifiedQueueRef.current.add(q.id);
+            }
+          });
+
           return {
             ...p,
             queue: mappedQueue,
@@ -238,6 +293,20 @@ export default function App() {
           };
         })
       );
+
+      // Notify on newly detected participants joining
+      if (newParticipants.length > 0) {
+        newParticipants.forEach((np) => {
+          if (!notifiedParticipantRef.current.has(np.id)) {
+            const id = Date.now().toString() + np.id;
+            setNotifications((prev) => [...prev, { id, message: `${np.name} joined the session`, type: "info" as const }]);
+            notifiedParticipantRef.current.add(np.id);
+            setTimeout(() => {
+              setNotifications((prev) => prev.filter((n) => n.id !== id));
+            }, 4000);
+          }
+        });
+      }
     };
 
     syncSessionState();
@@ -248,6 +317,106 @@ export default function App() {
       clearInterval(interval);
     };
   }, [activePlaylist?.id, activePlaylist?.isSessionActive, activePlaylist?.sessionId]);
+
+  // Demo mode: simulate participants and queue for public sessions
+  useEffect(() => {
+    if (!demoMode) return;
+    if (!activePlaylist?.isSessionActive || activePlaylist.settings.isPrivateSession) return;
+    if (!activePlaylist.sessionId) return;
+
+    const addDemoBurst = async () => {
+      // Get current participants to pick an existing guest if possible
+      const refreshedParticipants = await fetchSessionParticipants(activePlaylist.sessionId!);
+      const guests = refreshedParticipants.filter((p) => p.role === "guest");
+
+      let chosenName: string | null = null;
+      let addedParticipant = null;
+
+      if (guests.length > 0) {
+        chosenName = guests[Math.floor(Math.random() * guests.length)].name;
+      } else {
+        chosenName = demoNames[Math.floor(Math.random() * demoNames.length)];
+        addedParticipant = await addParticipantToSession(activePlaylist.sessionId!, chosenName, "guest");
+      }
+
+      // pick a demo song
+      const song = makeDemoSong();
+
+      await addSongToSessionQueue(
+        activePlaylist.sessionId!,
+        {
+          id: song.id,
+          title: song.title,
+          artist: song.artist,
+          album: song.album,
+          albumArt: song.albumArt,
+        },
+        { name: chosenName ?? "Guest", type: "guest" }
+      );
+
+      // Update local participants/queue quickly; sync will reconcile
+      setPlaylists((prev) =>
+        prev.map((p) => {
+          if (p.id !== activePlaylist.id) return p;
+          const queuedSong: QueuedSong = {
+            ...song,
+            queuedBy: { type: "guest", name: chosenName ?? "Guest" },
+          };
+          const nextParticipants = addedParticipant
+            ? [...(p.participants ?? []), { id: addedParticipant.id, name: addedParticipant.name, type: addedParticipant.role }]
+            : p.participants ?? [];
+          return {
+            ...p,
+            participants: nextParticipants.filter((v, i, arr) => arr.findIndex((x) => x.id === v.id) === i),
+            queue: [...p.queue, queuedSong],
+          };
+        })
+      );
+    };
+
+    // Add one immediately so you see activity right away
+    addDemoBurst().catch(console.error);
+
+    const interval = setInterval(async () => {
+      try {
+        const roll = Math.random();
+
+        if (roll < 0.5) {
+          // force add a new guest and queue a song
+          await addDemoBurst(true);
+        } else if (roll < 0.85) {
+          // queue using an existing guest (or add one if none)
+          await addDemoBurst(false);
+        } else {
+          // 15% remove a guest
+          const participantsArray =
+            (await fetchSessionParticipants(activePlaylist.sessionId!)) ?? [];
+          const guests = participantsArray.filter((p) => p.role === "guest");
+          if (guests.length) {
+            const target = guests[Math.floor(Math.random() * guests.length)];
+            await removeParticipantFromSession(activePlaylist.sessionId!, target.id);
+            setPlaylists((prev) =>
+              prev.map((p) =>
+                p.id === activePlaylist.id
+                  ? {
+                      ...p,
+                      participants: (p.participants ?? []).filter((pp) => pp.id !== target.id),
+                    }
+                  : p
+              )
+            );
+            const cacheSet = participantCacheRef.current.get(activePlaylist.sessionId!) ?? new Set<string>();
+            cacheSet.delete(target.id);
+            participantCacheRef.current.set(activePlaylist.sessionId!, cacheSet);
+            addNotification(`${target.name} left the session`, "info");
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [activePlaylist?.id, activePlaylist?.isSessionActive, activePlaylist?.settings.isPrivateSession, activePlaylist?.sessionId]);
 
   // Handle song completion and queue advancement
   useEffect(() => {
@@ -377,13 +546,20 @@ export default function App() {
     }
   }, [currentView]);
 
+  useEffect(() => {
+    // reset notification dedupers when switching active playlist
+    notifiedQueueRef.current = new Set();
+    notifiedParticipantRef.current = new Set();
+  }, [activePlaylistId]);
+
   const handleCreatePlaylist = async (
     playlistName: string,
     albumArt: string | null,
     settings: PlaylistSettings
   ) => {
+    if (!currentUser) return;
     // 1) Create in DB
-    const dbPlaylist = await createPlaylistInDb(playlistName, albumArt);
+    const dbPlaylist = await createPlaylistInDb(playlistName, albumArt, currentUser.id);
     if (!dbPlaylist) {
       // could add a toast here later
       return;
@@ -550,6 +726,14 @@ export default function App() {
       prev.map((p) => (p.id === activePlaylist.id ? updatedPlaylist : p))
     );
 
+    songsToAdd.forEach((song) => {
+      notifiedQueueRef.current.add(song.id);
+    });
+
+    songsToAdd.forEach((song) => {
+      addNotification(`Queued "${song.title}" by ${song.artist}`, "info");
+    });
+
     if (wasQueueEmpty && updatedPlaylist.queue.length > 0) {
       setCurrentSongIndex(0);
       setIsPlaying(true);
@@ -624,7 +808,8 @@ export default function App() {
       prev.map((p) => (p.id === activePlaylist.id ? updatedPlaylist : p))
     );
 
-    addNotification(`You have added "${song.title}" by ${song.artist}`, "success");
+    notifiedQueueRef.current.add(song.id);
+    addNotification(`Queued "${song.title}" by ${song.artist}`, "info");
 
     if (wasQueueEmpty && updatedPlaylist.queue.length > 0) {
       setCurrentSongIndex(0);
@@ -851,9 +1036,12 @@ export default function App() {
     if (removedSong) {
       addNotification(`You removed "${removedSong.title}" from queue`, "info");
     }
-  };  const handleJoinSession = async (code: string) => {
+  };
+
+  const handleJoinSession = async (code: string, displayName?: string) => {
     const trimmedCode = code.trim().toUpperCase();
     if (!trimmedCode) return;
+    const name = displayName?.trim() || "Guest";
 
     // 1) Find the session by code
     const session = await fetchSessionByCode(trimmedCode);
@@ -862,8 +1050,15 @@ export default function App() {
       return;
     }
 
+    const sessionSettings = session.settings ? { ...defaultSettings, ...session.settings } : { ...defaultSettings };
+    if ((sessionSettings.isPrivateSession ?? false) && (!currentUser || currentUser.id === "guest")) {
+      addNotification("Private session: please log in to join.", "info");
+      setShowLogin(true);
+      return;
+    }
+
     // 2) Add "You" as a participant
-    const participant = await addParticipantToSession(session.id, "You", "user");
+    const participant = await addParticipantToSession(session.id, name, "user");
 
     // 3) Fetch queue, participants, and playlist songs
     const [queueRows, participantRows, dbSongs] = await Promise.all([
@@ -1029,6 +1224,18 @@ export default function App() {
     setCurrentView("home");
   };
 
+  const handleLogin = async (email: string, displayName: string) => {
+    const user = await getOrCreateUser(email, displayName);
+    if (user) {
+      setCurrentUser({
+        id: user.id,
+        email: user.email ?? email,
+        displayName: user.display_name ?? displayName,
+      });
+      setShowLogin(false);
+    }
+  };
+
   const handleRemovePlaylistSong = async (songId: string) => {
     if (!activePlaylist) return;
     
@@ -1165,6 +1372,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
+      {!currentUser && showLogin && (
+        <LoginModal 
+          onSubmit={handleLogin} 
+          onContinueGuest={() => {
+            setCurrentUser({
+              id: "guest",
+              email: "guest",
+              displayName: "Guest",
+            });
+            setShowLogin(false);
+          }}
+        />
+      )}
       {/* Header */}
       <Header 
         onSearchClick={handleSearchClick} 
@@ -1175,6 +1395,34 @@ export default function App() {
         isSessionActive={activePlaylist?.isSessionActive && currentView === "playlist-view"}
         onStopSession={handleStopSession}
         hasJoinedSession={activePlaylist?.hasJoinedSession}
+        rightAction={
+          currentUser ? (
+            currentUser.id === "guest" ? (
+              <button
+                onClick={() => {
+                  setCurrentUser(null);
+                  setShowLogin(true);
+                }}
+                className="px-3 py-1 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-all"
+              >
+                Login
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setCurrentUser(null);
+                  setPlaylists([]);
+                  setActivePlaylistId(null);
+                  setShowLogin(true);
+                  setCurrentView("home");
+                }}
+                className="px-3 py-1 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-all"
+              >
+                Logout
+              </button>
+            )
+          ) : undefined
+        }
       />
       
       {/* Main Content Area */}
@@ -1287,7 +1535,31 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Generic notifications (visible even outside sessions) */}
+      <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+        <AnimatePresence>
+          {notifications.map((n) => (
+            <motion.div
+              key={n.id}
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              className="pointer-events-auto bg-zinc-900/90 border border-white/10 rounded-lg px-4 py-2 shadow-xl text-white text-sm"
+            >
+              {n.message}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
+
+
+
+
+
+
+
 

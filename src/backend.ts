@@ -1,11 +1,18 @@
 // src/backend.ts
 import { supabase } from "./supabaseClient";
 
+export interface DbUser {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+}
+
 export interface DbPlaylist {
   id: string;
   name: string;
   album_art: string | null;
   created_at?: string;
+  owner_id?: string | null;
 }
 
 export interface DbSong {
@@ -63,10 +70,39 @@ export interface DbCatalogSong {
 
 
 // Load all playlists
-export async function fetchPlaylists(): Promise<DbPlaylist[]> {
+export async function getOrCreateUser(email: string, displayName: string): Promise<DbUser | null> {
+  // Try to find existing
+  const { data: existing, error: fetchErr } = await supabase
+    .from("users")
+    .select("id, email, display_name")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (fetchErr && fetchErr.code !== "PGRST116") {
+    console.error("Error fetching user:", fetchErr.message);
+  }
+  if (existing) return existing as DbUser;
+
+  // Create new
+  const { data, error } = await supabase
+    .from("users")
+    .insert({ email, display_name: displayName })
+    .select("id, email, display_name")
+    .single();
+
+  if (error) {
+    console.error("Error creating user:", error.message);
+    return null;
+  }
+
+  return data as DbUser;
+}
+
+export async function fetchUserPlaylists(userId: string): Promise<DbPlaylist[]> {
   const { data, error } = await supabase
     .from("playlists")
-    .select("id, name, album_art, created_at")
+    .select("id, name, album_art, created_at, owner_id")
+    .eq("owner_id", userId)
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -80,12 +116,13 @@ export async function fetchPlaylists(): Promise<DbPlaylist[]> {
 // Create a playlist
 export async function createPlaylistInDb(
   name: string,
-  albumArt: string | null
+  albumArt: string | null,
+  ownerId?: string | null
 ): Promise<DbPlaylist | null> {
   const { data, error } = await supabase
     .from("playlists")
-    .insert([{ name, album_art: albumArt }])
-    .select("id, name, album_art, created_at")
+    .insert([{ name, album_art: albumArt, owner_id: ownerId ?? null }])
+    .select("id, name, album_art, created_at, owner_id")
     .single();
 
   if (error) {

@@ -1,4 +1,5 @@
 import { Search, Plus, Wifi, Battery, Signal, BellOff, ArrowLeft, Filter } from "lucide-react";
+import type { ReactNode } from "react";
 
 interface HeaderProps {
   onSearchClick: () => void;
@@ -10,9 +11,10 @@ interface HeaderProps {
   onStopSession?: () => void;
   onStartSession?: () => void;
   hasJoinedSession?: boolean;
+  rightAction?: ReactNode;
 }
 
-export function Header({ onSearchClick, currentView, onBack, onPlusClick, playlistTitle, isSessionActive, onStopSession, onStartSession, hasJoinedSession }: HeaderProps) {
+export function Header({ onSearchClick, currentView, onBack, onPlusClick, playlistTitle, isSessionActive, onStopSession, onStartSession, hasJoinedSession, rightAction }: HeaderProps) {
   const getTitle = () => {
     if (currentView === "playlist-view" && playlistTitle) {
       return playlistTitle;
@@ -105,6 +107,7 @@ export function Header({ onSearchClick, currentView, onBack, onPlusClick, playli
               {/* Plus button removed per request */}
             </>
           )}
+          {rightAction}
         </div>
       </div>
     </div>

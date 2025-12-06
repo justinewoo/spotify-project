@@ -1,4 +1,4 @@
-import { Play, User, UserCircle, Plus, X, Users, Music, ThumbsUp } from "lucide-react";
+import { Play, User, UserCircle, Plus, X, Users, Music, ThumbsUp, Crown, UserPlus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -328,8 +328,15 @@ export function PlaylistView({
                 };
 
                 const getGradient = (type: 'host' | 'user' | 'guest') => {
-                  // All participants use the same gradient
-                  return 'from-[#852654] to-[#6343b8]';
+                  if (type === 'host') return 'from-[#f59e0b] to-[#ef4444]'; // amber to red
+                  if (type === 'guest') return 'from-[#10b981] to-[#14b8a6]'; // green to teal
+                  return 'from-[#2563eb] to-[#7c3aed]'; // blue to purple for user
+                };
+
+                const getIcon = (type: 'host' | 'user' | 'guest') => {
+                  if (type === 'host') return <Crown className="w-4 h-4" />;
+                  if (type === 'guest') return <UserPlus className="w-4 h-4" />;
+                  return <User className="w-4 h-4" />;
                 };
 
                 return (
@@ -348,11 +355,21 @@ export function PlaylistView({
                           `}
                           style={{ zIndex: participants.length - index }}
                         >
-                          {getInitials(participant.name)}
+                          <div className="flex items-center gap-1">
+                            {getIcon(participant.type)}
+                            <span className="text-xs">{getInitials(participant.name)}</span>
+                          </div>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>{displayName} {participant.type === 'host' ? '(Host)' : ''}</p>
+                        <p>
+                          {displayName}{' '}
+                          {participant.type === 'host'
+                            ? '(Host)'
+                            : participant.type === 'guest'
+                              ? '(Guest)'
+                              : '(User)'}
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
